@@ -25,14 +25,14 @@ export async function listDeployments(): Promise<DeploymentRecord[]> {
     return [];
   }
 
-  const rows = await sql<DeploymentRecord[]>`
+  const rows = await sql`
     select id, asset_name as "assetName", chain, status, created_at as "createdAt"
     from deployments
     order by created_at desc
     limit 25
   `;
 
-  return rows;
+  return rows as DeploymentRecord[];
 }
 
 export async function recordDeployment(entry: Omit<DeploymentRecord, "createdAt">) {

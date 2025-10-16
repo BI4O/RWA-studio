@@ -1,14 +1,23 @@
-import { http, createConfig } from "wagmi";
+import { createConfig } from "wagmi";
 import { baseSepolia, polygonAmoy, sepolia } from "wagmi/chains";
-import { injected } from "wagmi/connectors";
+import { InjectedConnector } from "wagmi/connectors/injected";
+import { createPublicClient, http } from "viem";
+
+const chains = [sepolia, baseSepolia, polygonAmoy];
 
 export const wagmiConfig = createConfig({
-  chains: [sepolia, baseSepolia, polygonAmoy],
-  connectors: [injected()],
-  transports: {
-    [sepolia.id]: http(),
-    [baseSepolia.id]: http(),
-    [polygonAmoy.id]: http(),
+  autoConnect: true,
+  connectors: [
+    new InjectedConnector({
+      chains,
+      options: { shimDisconnect: true },
+    }),
+  ],
+  publicClient: ({ chainId }) => {
+    const chain = chains.find((candidate) => candidate.id === (chainId ?? sepolia.id)) ?? sepolia;
+    return createPublicClient({
+      chain,
+      transport: http(),
+    }) as any;
   },
-  ssr: true,
 });
