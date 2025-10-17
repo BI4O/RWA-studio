@@ -37,18 +37,19 @@ export function Steps({
             key={index}
             className={cn(
               "flex",
-              isVertical ? "flex-col" : "flex-row items-center",
-              !isLast && isVertical && "mb-6",
+              isVertical ? "flex-row" : "flex-col items-center",
+              !isLast && isVertical && "mb-4",
               !isLast && !isVertical && "mr-6"
             )}
           >
-            <div className={cn("flex", isVertical ? "flex-row" : "flex-col items-center")}>
+            {/* Step indicator and connector column */}
+            <div className={cn("flex", isVertical ? "flex-col items-center" : "flex-row items-center")}>
               {/* Step indicator */}
               <div className="flex items-center">
                 {progressDot ? (
                   <div
                     className={cn(
-                      "h-3 w-3 rounded-full border-2",
+                      "h-3 w-3 rounded-full border-2 flex-shrink-0",
                       isCompleted || isActive
                         ? "border-primary bg-primary"
                         : "border-muted-foreground bg-background"
@@ -57,7 +58,7 @@ export function Steps({
                 ) : (
                   <div
                     className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-medium",
+                      "flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-medium flex-shrink-0",
                       isCompleted
                         ? "border-primary bg-primary text-primary-foreground"
                         : isActive
@@ -75,14 +76,14 @@ export function Steps({
                 <div
                   className={cn(
                     "bg-muted-foreground/30",
-                    isVertical ? "ml-1.5 h-6 w-0.5" : "mt-1.5 h-0.5 w-6"
+                    isVertical ? "h-6 w-0.5" : "h-0.5 w-6"
                   )}
                 />
               )}
             </div>
 
             {/* Step content */}
-            <div className={cn(isVertical ? "ml-4" : "mt-2 text-center")}>
+            <div className={cn(isVertical ? "ml-3 flex-1" : "mt-2 text-center")}>
               <div
                 className={cn(
                   "text-sm font-medium",

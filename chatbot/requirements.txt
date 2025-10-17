@@ -3,16 +3,15 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 
 # LangChain和LangGraph依赖
-langchain==0.1.0
-langchain-core==0.1.7
-langchain-openai==0.0.2
-langgraph==0.0.20
+langchain>=0.1.0
+langchain-core>=0.1.8
+langchain-openai>=0.0.2
+langgraph>=0.0.20
 
 # 数据验证和序列化
 pydantic==2.5.0
 
 # 异步支持
-asyncio
 aiofiles==23.2.1
 
 # HTTP客户端
@@ -23,11 +22,3 @@ python-multipart==0.0.6
 
 # 开发工具（可选）
 python-dotenv==1.0.0
-
-# 原有chatbot依赖
-re
-json
-pathlib
-typing
-datetime
-uuid

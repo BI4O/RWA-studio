@@ -181,7 +181,9 @@ export function ContractGenerator() {
   const contractSource = useMemo(() => {
     return DEFAULT_TEMPLATE
       .replace(/{{CONTRACT_NAME}}/g, `${symbol}_RWA_Token`)
-      .replace(/{{DECIMALS}}/g, decimals.toString());
+      .replace(/{{DECIMALS}}/g, decimals.toString())
+      .replace(/400">/g, '>')
+      .replace(/\d+">/g, '>'); // Remove all "number"> patterns
   }, [symbol, decimals]);
 
   // Function to trigger highlight when parameter changes
@@ -280,25 +282,25 @@ export function ContractGenerator() {
   }
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-border/70 bg-card shadow-2xl">
-      <div className="flex flex-col lg:flex-row">
-        <aside className="w-full border-b border-border/60 bg-card/95 px-6 py-8 backdrop-blur lg:w-[36%] lg:border-b-0 lg:border-r lg:px-8">
-          <div className="space-y-8">
+    <div className="overflow-hidden rounded-3xl border border-border/70 bg-card shadow-2xl h-[calc(100vh-120px)]">
+      <div className="flex flex-col lg:flex-row h-full">
+        <aside className="w-full border-b border-border/60 bg-card/95 px-4 py-4 backdrop-blur lg:w-[34%] lg:border-b-0 lg:border-r lg:px-4 overflow-y-auto">
+          <div className="space-y-4">
             <div>
-              <h2 className="text-xl font-semibold text-foreground">Contract configuration</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <h2 className="text-lg font-semibold text-foreground">Contract configuration</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
                 Configure RWA token parameters before generating smart contract code.
               </p>
             </div>
-            <div className="space-y-5">
+            <div className="space-y-3">
               {/* Network and Risk Provider moved to top */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Select Network</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Select Network</Label>
                   <select
                     value={selectedChain}
                     onChange={(event) => setSelectedChain(Number(event.target.value))}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2"
+                    className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs"
                   >
                     {CHAINS.map((chain) => (
                       <option key={chain.id} value={chain.id}>
@@ -307,12 +309,12 @@ export function ContractGenerator() {
                     ))}
                   </select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Risk Provider</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">Risk Provider</Label>
                   <select
                     value={selectedRiskProvider}
                     onChange={(event) => setSelectedRiskProvider(event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2"
+                    className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs"
                   >
                     {RISK_PROVIDERS.map((provider) => (
                       <option key={provider.id} value={provider.id}>
@@ -323,121 +325,127 @@ export function ContractGenerator() {
                 </div>
               </div>
 
-              <div className="border-t border-border/20 pt-4">
-                <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="tokenName">Token Name</Label>
-                    <Input
-                      id="tokenName"
-                      value={tokenName}
-                      placeholder="e.g. XAU Gold Token"
-                      onChange={(event) => setTokenName(event.target.value)}
-                      className="rounded-xl border-border bg-background"
-                    />
+              <div className="border-t border-border/20 pt-2">
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="tokenName" className="text-xs">Token Name</Label>
+                      <Input
+                        id="tokenName"
+                        value={tokenName}
+                        placeholder="e.g. XAU Gold Token"
+                        onChange={(event) => setTokenName(event.target.value)}
+                        className="rounded-lg border-border bg-background h-7 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="symbol" className="text-xs">Symbol</Label>
+                      <Input
+                        id="symbol"
+                        value={symbol}
+                        placeholder="e.g. XAU"
+                        onChange={(event) => setSymbol(event.target.value)}
+                        className="rounded-lg border-border bg-background h-7 text-xs"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="symbol">Symbol</Label>
-                    <Input
-                      id="symbol"
-                      value={symbol}
-                      placeholder="e.g. XAU"
-                      onChange={(event) => setSymbol(event.target.value)}
-                      className="rounded-xl border-border bg-background"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="initialSupply" className="text-xs">Initial Supply</Label>
+                      <Input
+                        id="initialSupply"
+                        type="number"
+                        value={initialSupply}
+                        min={1}
+                        onChange={(event) => setInitialSupply(Number(event.target.value))}
+                        className="rounded-lg border-border bg-background h-7 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="decimals" className="text-xs">Decimals</Label>
+                      <Input
+                        id="decimals"
+                        type="number"
+                        value={decimals}
+                        min={0}
+                        max={18}
+                        onChange={(event) => setDecimals(Number(event.target.value))}
+                        className="rounded-lg border-border bg-background h-7 text-xs"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="initialSupply">Initial Supply</Label>
-                    <Input
-                      id="initialSupply"
-                      type="number"
-                      value={initialSupply}
-                      min={1}
-                      onChange={(event) => setInitialSupply(Number(event.target.value))}
-                      className="rounded-xl border-border bg-background"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="decimals">Decimals</Label>
-                    <Input
-                      id="decimals"
-                      type="number"
-                      value={decimals}
-                      min={0}
-                      max={18}
-                      onChange={(event) => setDecimals(Number(event.target.value))}
-                      className="rounded-xl border-border bg-background"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ownerAddress">Owner / Admin Address</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="ownerAddress" className="text-xs">Owner / Admin Address</Label>
                     <Input
                       id="ownerAddress"
                       value={ownerAddress}
                       placeholder="0x..."
                       onChange={(event) => setOwnerAddress(event.target.value)}
-                      className="rounded-xl border-border bg-background font-mono text-sm"
+                      className="rounded-lg border-border bg-background font-mono text-xs h-7"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="enforcerAddress">Enforcer Role</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="enforcerAddress" className="text-xs">Enforcer Role</Label>
                     <Input
                       id="enforcerAddress"
                       value={enforcerAddress}
                       placeholder="0x..."
                       onChange={(event) => setEnforcerAddress(event.target.value)}
-                      className="rounded-xl border-border bg-background font-mono text-sm"
+                      className="rounded-lg border-border bg-background font-mono text-xs h-7"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="minterAddress">Minter Role</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="minterAddress" className="text-xs">Minter Role</Label>
                     <Input
                       id="minterAddress"
                       value={minterAddress}
                       placeholder="0x..."
                       onChange={(event) => setMinterAddress(event.target.value)}
-                      className="rounded-xl border-border bg-background font-mono text-sm"
+                      className="rounded-lg border-border bg-background font-mono text-xs h-7"
                     />
                   </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="whitelistMode"
-                        checked={whitelistMode}
-                        onChange={(event) => setWhitelistMode(event.target.checked)}
-                        className="rounded border-border"
-                      />
-                      <Label htmlFor="whitelistMode">Whitelist Mode</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="freezeControl"
-                        checked={freezeControl}
-                        onChange={(event) => setFreezeControl(event.target.checked)}
-                        className="rounded border-border"
-                      />
-                      <Label htmlFor="freezeControl">Freeze Control</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="forceTransferControl"
-                        checked={forceTransferControl}
-                        onChange={(event) => setForceTransferControl(event.target.checked)}
-                        className="rounded border-border"
-                      />
-                      <Label htmlFor="forceTransferControl">Force Transfer Control</Label>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="whitelistMode"
+                          checked={whitelistMode}
+                          onChange={(event) => setWhitelistMode(event.target.checked)}
+                          className="rounded border-border"
+                        />
+                        <Label htmlFor="whitelistMode" className="text-xs">Whitelist</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="freezeControl"
+                          checked={freezeControl}
+                          onChange={(event) => setFreezeControl(event.target.checked)}
+                          className="rounded border-border"
+                        />
+                        <Label htmlFor="freezeControl" className="text-xs">Freeze</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="forceTransferControl"
+                          checked={forceTransferControl}
+                          onChange={(event) => setForceTransferControl(event.target.checked)}
+                          className="rounded border-border"
+                        />
+                        <Label htmlFor="forceTransferControl" className="text-xs">Force Transfer</Label>
+                      </div>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="defaultWhitelisted">Default Whitelisted Addresses</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="defaultWhitelisted" className="text-xs">Default Whitelisted Addresses</Label>
                     <Textarea
                       id="defaultWhitelisted"
                       value={defaultWhitelisted}
                       placeholder="0x..., 0x..., 0x..."
                       onChange={(event) => setDefaultWhitelisted(event.target.value)}
-                      className="min-h-[80px] rounded-2xl border-border bg-background font-mono text-sm"
+                      className="min-h-[40px] rounded-lg border-border bg-background font-mono text-xs"
                     />
                   </div>
                 </div>
@@ -446,9 +454,9 @@ export function ContractGenerator() {
           </div>
         </aside>
         
-        <section className="flex-1 bg-gradient-to-b from-muted/30 via-background to-background px-6 py-8 lg:px-10">
-          <div className="rounded-3xl border border-border/60 bg-card/95 shadow-xl">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
+        <section className="flex-1 bg-gradient-to-b from-muted/30 via-background to-background px-4 py-4 lg:px-6 flex flex-col min-h-0">
+          <div className="rounded-3xl border border-border/60 bg-card/95 shadow-xl flex-1 flex flex-col min-h-0">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-3">
               <div>
                 <h4 className="text-base font-semibold text-foreground">Real-time generated contract</h4>
                 <p className="text-sm text-muted-foreground">
@@ -475,14 +483,16 @@ export function ContractGenerator() {
                 )}
               </Button>
             </div>
-            <ScrollArea className="h-[500px] px-6 py-5">
-              <CodeHighlighter 
-                code={contractSource} 
-                highlightedSections={highlightedSections}
-                className="text-foreground/90"
-              />
-            </ScrollArea>
-            <div className="border-t border-border/60 px-6 py-4">
+            <div className="flex-1 overflow-hidden">
+              <ScrollArea className="h-full px-4 py-3">
+                <CodeHighlighter 
+                  code={contractSource} 
+                  highlightedSections={highlightedSections}
+                  className="text-foreground/90 text-xs font-mono"
+                />
+              </ScrollArea>
+            </div>
+            <div className="border-t border-border/60 px-6 py-3">
               <Button
                 type="button"
                 className="w-full rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"

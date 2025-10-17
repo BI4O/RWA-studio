@@ -425,7 +425,7 @@ def initialize_agent():
         tools=tools,
         verbose=True,
         handle_parsing_errors=True,
-        max_iterations=5
+        max_iterations=15
     )
 
     return agent_executor

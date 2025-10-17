@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, TrendingUp, Users } from "lucide-react";
 
 // Mock contract data with more transactions
 const MOCK_CONTRACTS = [
@@ -202,11 +202,129 @@ const MOCK_CONTRACTS = [
 export function DashboardOverview() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedContract, setSelectedContract] = useState(MOCK_CONTRACTS[0]);
+  const lineChartRef = useRef<HTMLDivElement>(null);
+  const doughnutChartRef = useRef<HTMLDivElement>(null);
 
   const filteredContracts = MOCK_CONTRACTS.filter(contract => {
     return contract.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
            contract.network.toLowerCase().includes(searchTerm.toLowerCase());
   });
+
+  // Simple CSS-based charts using SVG
+  const LineChart = () => {
+    const data = [32000, 42000, 38000, 51000, 45000, 48000, 52000];
+    const maxValue = Math.max(...data);
+    const points = data.map((value, index) => {
+      const x = (index / (data.length - 1)) * 280; // 280px width
+      const y = 140 - (value / maxValue) * 120; // 140px height, inverted
+      return `${x},${y}`;
+    }).join(' ');
+
+    return (
+      <div className="h-48 w-full relative">
+        <svg width="100%" height="100%" viewBox="0 0 300 160" className="absolute inset-0">
+          <defs>
+            <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="rgba(59, 130, 246, 0.3)" />
+              <stop offset="100%" stopColor="rgba(59, 130, 246, 0.0)" />
+            </linearGradient>
+          </defs>
+          
+          {/* Grid lines */}
+          {[0, 1, 2, 3, 4].map(i => (
+            <line key={i} x1="10" y1={20 + i * 30} x2="290" y2={20 + i * 30} 
+                  stroke="#f3f4f6" strokeWidth="1" />
+          ))}
+          
+          {/* Area fill */}
+          <polygon points={`10,140 ${points} 290,140`} fill="url(#areaGradient)" />
+          
+          {/* Line */}
+          <polyline points={points} fill="none" stroke="#3b82f6" strokeWidth="2" />
+          
+          {/* Data points */}
+          {data.map((value, index) => {
+            const x = (index / (data.length - 1)) * 280 + 10;
+            const y = 140 - (value / maxValue) * 120 + 20;
+            return <circle key={index} cx={x} cy={y} r="3" fill="#3b82f6" />;
+          })}
+        </svg>
+        
+        {/* X-axis labels */}
+        <div className="absolute bottom-2 left-0 right-0 flex justify-between px-3 text-xs text-muted-foreground">
+          {['Jan 9', 'Jan 10', 'Jan 11', 'Jan 12', 'Jan 13', 'Jan 14', 'Jan 15'].map((label, i) => (
+            <span key={i}>{label}</span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const DoughnutChart = () => {
+    const data = [
+      { name: 'Retail Holders', value: 45, color: '#3b82f6' },
+      { name: 'Institutional', value: 25, color: '#10b981' },
+      { name: 'Treasury', value: 20, color: '#f59e0b' },
+      { name: 'Locked', value: 10, color: '#ef4444' }
+    ];
+    
+    let currentAngle = 0;
+    const radius = 60;
+    const innerRadius = 30;
+    const centerX = 100;
+    const centerY = 80;
+
+    return (
+      <div className="h-48 w-full relative">
+        <svg width="100%" height="100%" viewBox="0 0 200 160" className="absolute inset-0">
+          {data.map((item, index) => {
+            const angle = (item.value / 100) * 360;
+            const startAngle = currentAngle;
+            const endAngle = currentAngle + angle;
+            
+            const x1 = centerX + radius * Math.cos((startAngle * Math.PI) / 180);
+            const y1 = centerY + radius * Math.sin((startAngle * Math.PI) / 180);
+            const x2 = centerX + radius * Math.cos((endAngle * Math.PI) / 180);
+            const y2 = centerY + radius * Math.sin((endAngle * Math.PI) / 180);
+            
+            const x3 = centerX + innerRadius * Math.cos((startAngle * Math.PI) / 180);
+            const y3 = centerY + innerRadius * Math.sin((startAngle * Math.PI) / 180);
+            const x4 = centerX + innerRadius * Math.cos((endAngle * Math.PI) / 180);
+            const y4 = centerY + innerRadius * Math.sin((endAngle * Math.PI) / 180);
+            
+            const largeArc = angle > 180 ? 1 : 0;
+            
+            const pathData = [
+              `M ${x1} ${y1}`,
+              `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
+              `L ${x4} ${y4}`,
+              `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x3} ${y3}`,
+              'Z'
+            ].join(' ');
+            
+            currentAngle += angle;
+            
+            return (
+              <path key={index} d={pathData} fill={item.color} />
+            );
+          })}
+        </svg>
+        
+        {/* Legend */}
+        <div className="absolute bottom-2 left-0 right-0 flex flex-wrap justify-center gap-2 text-xs">
+          {data.map((item, index) => (
+            <div key={index} className="flex items-center gap-1">
+              <div 
+                className="w-2 h-2 rounded-full" 
+                style={{ backgroundColor: item.color }}
+              />
+              <span className="text-muted-foreground">{item.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <section className="space-y-6">
@@ -316,6 +434,35 @@ export function DashboardOverview() {
                   </table>
                 </div>
               </div>
+            </div>
+
+            {/* Charts section - moved below transactions */}
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    Tx Volume Over Time
+                  </CardTitle>
+                  <CardDescription>Last 7 Days +8.5%</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LineChart />
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Holders Distribution
+                  </CardTitle>
+                  <CardDescription>Current +2.3%</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DoughnutChart />
+                </CardContent>
+              </Card>
             </div>
           </CardContent>
         </Card>

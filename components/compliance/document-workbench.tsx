@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,12 +8,29 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Steps } from "@/components/ui/steps";
-import { FileUp, Loader2, MessageCircle, Paperclip, Send } from "lucide-react";
+import { FileUp, Loader2, MessageCircle, Paperclip, Send, Bot, User } from "lucide-react";
 import { v4 as uuid } from "uuid";
 
-import type { ChatMessage } from "@/lib/ai";
+// ChatBot API 配置
+const CHATBOT_API_BASE = "http://localhost:8000";
 
-const SYSTEM_PROMPT = `You are a compliance co-pilot for RWA issuances. Ask targeted follow-up questions to capture missing disclosures, highlight regulatory gaps, and produce structured bullet summaries.`;
+// 聊天消息类型
+interface ChatBotMessage {
+  role: "user" | "assistant";
+  content: string;
+  section?: number;
+  timestamp?: string;
+}
+
+interface ChatBotResponse {
+  session_id: string;
+  message: string;
+  current_section: number;
+  section_title: string;
+  section_complete: boolean;
+  conversation_history: ChatBotMessage[];
+  document_state: any;
+}
 
 const COMPLIANCE_STEPS = [
   { title: "Executive Summary", description: "Token symbol, contract address, basic info" },
@@ -30,7 +47,7 @@ const COMPLIANCE_STEPS = [
   { title: "Declarations & Signatures", description: "Authenticity statements, risk disclosures" },
 ];
 
-type ConversationMessage = ChatMessage & { id: string };
+type ConversationMessage = ChatBotMessage & { id: string };
 
 export function DocumentWorkbench() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -39,63 +56,200 @@ export function DocumentWorkbench() {
       id: uuid(),
       role: "assistant",
       content:
-        "Upload issuer materials and I will extract required representations, highlight missing inputs, and produce a compliance-ready draft.",
+        "Welcome to the RWA Token Listing Memo Assistant! I will help you complete 12 sections of compliance documentation. Please tell me your token basic information, or say 'start generation' to let me guide you through the entire process.",
     },
   ]);
-  const [draft, setDraft] = useState("Provide issuer details to synthesize a disclosure draft.");
+  const [draft, setDraft] = useState("Waiting to start generating RWA Token Listing Memo...");
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [currentSection, setCurrentSection] = useState(0);
+  const [sectionTitle, setSectionTitle] = useState("Executive Summary");
+  const [mounted, setMounted] = useState(false);
 
-  const aiMessages = useMemo<ChatMessage[]>(
-    () => [
-      { role: "system", content: SYSTEM_PROMPT },
-      ...messages.map(({ role, content }) => ({ role, content })),
-    ],
-    [messages],
-  );
+  // PDF export function
+  const handleExportPDF = useCallback(() => {
+    const content = "# CloudComputer RWA Listing Memo\n\nThis is a sample RWA listing memo document.\n\n## Executive Summary\n\nThis document outlines the key details for the RWA token listing.\n\n## Token Details\n\n- Token Name: CloudComputer Token\n- Symbol: CC\n- Total Supply: 1,000,000\n- Blockchain: Ethereum\n\n## Compliance\n\nAll regulatory requirements have been met.\n\n## Risk Assessment\n\nLow to moderate risk assessment completed.\n\n## Conclusion\n\nRecommended for listing approval.";
+    
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'CloudComputer_RWA_Listing_Memo.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  // 修复hydration问题
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 初始化时只在需要时创建会话，不在useEffect中自动创建
+  useEffect(() => {
+    if (mounted) {
+      // 不自动创建会话，只在用户首次发送消息时创建
+      console.log("Component mounted, will create session when needed");
+    }
+  }, [mounted]);
+
+  // 创建ChatBot会话
+  const createSession = useCallback(async (retryCount = 0) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒超时
+      
+      const response = await fetch(`${CHATBOT_API_BASE}/session/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_name: "RWA Studio User",
+          project_name: "RWA Token Listing Memo"
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setSessionId(data.session_id);
+      console.log("ChatBot session created successfully:", data.session_id);
+      return data.session_id;
+    } catch (error) {
+      console.error(`ChatBot service connection attempt ${retryCount + 1} failed:`, error);
+      
+      // 重试最多5次，每次延迟递增但不阻塞渲染
+      if (retryCount < 5) {
+        const delay = Math.min((retryCount + 1) * 1000, 5000); // 1s, 2s, 3s, 4s, 5s
+        console.log(`Retrying in ${delay}ms...`);
+        return new Promise(resolve => {
+          setTimeout(async () => {
+            const result = await createSession(retryCount + 1);
+            resolve(result);
+          }, delay);
+        });
+      }
+      
+      // 所有重试失败后设置离线模式
+      console.log("All connection attempts failed, switching to offline mode");
+      setSessionId("offline-mode");
+      return "offline-mode";
+    }
+  }, []);
+
+  // 手动重连功能
+  const reconnectToChatBot = useCallback(async () => {
+    setSessionId(null);
+    setMessages([
+      {
+        id: uuid(),
+        role: "assistant",
+        content: "Attempting to reconnect to ChatBot service...",
+      },
+    ]);
+    await createSession();
+  }, [createSession]);
+
+  // 初始化会话
+  // 移除自动创建会话的useEffect，改为懒加载
+  // useEffect(() => {
+  //   if (mounted && !sessionId) {
+  //     createSession();
+  //   }
+  // }, [mounted, sessionId, createSession]);
 
   const buildDraft = useCallback(() => {
     return "# Compliance summary\n\n_Auto-generated via AI co-pilot._";
   }, []);
 
   const summaryBlurb = useMemo(() => {
-    return "Upload issuer materials and collaborate with the AI assistant to generate compliance documentation.";
-  }, []);
+    return `Processing section ${currentSection + 1}/12: ${sectionTitle}. Collaborate with the AI assistant to generate RWA Token Listing Memo.`;
+  }, [currentSection, sectionTitle]);
 
   const sendMessage = useCallback(
     async (input: string) => {
+      if (!sessionId) {
+        console.error("No session ID available");
+        return;
+      }
+
       const userMessage: ConversationMessage = { id: uuid(), role: "user", content: input };
       setMessages((prev) => [...prev, userMessage]);
       setIsLoading(true);
+      
       try {
-        const response = await fetch("/api/ai", {
+        let currentSessionId = sessionId;
+        if (!currentSessionId || currentSessionId === "offline-mode") {
+          // 尝试创建或重新连接会话
+          console.log("Creating new session or reconnecting...");
+          const newSessionId = await createSession();
+          currentSessionId = newSessionId;
+          
+          // 如果仍然是离线模式，显示模拟响应
+          if (currentSessionId === "offline-mode") {
+            setTimeout(() => {
+              const assistantMessage: ConversationMessage = {
+                id: uuid(),
+                role: "assistant",
+                content: "ChatBot service is not available. This is a simulated response. Please click 'Try to reconnect' above or ensure the ChatBot service is running at http://localhost:8000.",
+              };
+              setMessages((prev) => [...prev, assistantMessage]);
+              setIsLoading(false);
+            }, 1000);
+            return;
+          }
+        }
+
+        const response = await fetch(`${CHATBOT_API_BASE}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [...aiMessages, userMessage] }),
+          body: JSON.stringify({
+            content: input,
+            session_id: currentSessionId
+          }),
         });
 
         if (!response.ok) {
-          throw new Error("AI request failed");
+          throw new Error("ChatBot request failed");
         }
 
-        const { content } = (await response.json()) as { content: string };
-        setMessages((prev) => [...prev, { id: uuid(), role: "assistant", content }]);
-        setDraft(buildDraft() + `\n\n## Assistant notes\n${content}`);
+        const data: ChatBotResponse = await response.json();
+        
+        const assistantMessage: ConversationMessage = {
+          id: uuid(),
+          role: "assistant",
+          content: data.message,
+          section: data.current_section,
+          timestamp: new Date().toISOString()
+        };
+        
+        setMessages((prev) => [...prev, assistantMessage]);
+        setCurrentSection(data.current_section);
+        setSectionTitle(data.section_title);
+        
+        // 更新草稿内容
+        const newDraft = `# ${data.section_title}\n\n${data.message}\n\n---\n\n**Current Section**: ${data.current_section + 1}/12\n**Status**: ${data.section_complete ? 'Completed' : 'In Progress'}`;
+        setDraft(newDraft);
+        
       } catch (error) {
-        console.error(error);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: "I could not reach the AI service. Please confirm the OpenRouter API key configuration.",
-          },
-        ]);
+        console.error("ChatBot error:", error);
+        const errorMessage: ConversationMessage = {
+          id: uuid(),
+          role: "assistant",
+          content: "Sorry, unable to connect to ChatBot service. Please ensure the service is running at http://localhost:8000",
+        };
+        setMessages((prev) => [...prev, errorMessage]);
       } finally {
         setIsLoading(false);
       }
     },
-    [aiMessages, buildDraft],
+    [sessionId],
   );
 
   const onUpload = useCallback(
@@ -134,6 +288,10 @@ export function DocumentWorkbench() {
     },
     [sendMessage],
   );
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <div className="space-y-8">
@@ -198,28 +356,42 @@ export function DocumentWorkbench() {
             </CardContent>
           </Card>
         </aside>
-        <section className="order-1 flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/80 shadow-xl xl:order-2 xl:col-span-5">
-          <div className="border-b border-border/60 bg-card/60 px-6 py-6">
+        <section className="order-1 flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/80 shadow-xl xl:order-2 xl:col-span-5 h-[800px]">
+          <div className="border-b border-border/60 bg-card/60 px-6 py-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-semibold text-foreground">AI Compliance Assistant</h2>
-                <p className="text-sm text-muted-foreground">Live extraction and co-authoring workspace.</p>
+                <h2 className="text-xl font-semibold text-foreground">RWA AI Compliance Assistant</h2>
+                <p className="text-sm text-muted-foreground">Interactive document generation workspace</p>
               </div>
               <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide">
-                Stage · Drafting
+                Section {currentSection + 1}/12
               </Badge>
             </div>
-            <div className="mt-4 rounded-xl border border-border/60 bg-muted/40 p-4">
+            <div className="mt-3 rounded-xl border border-border/60 bg-muted/40 p-3">
               <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <MessageCircle className="h-4 w-4" />
                 AI Summary
               </p>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{summaryBlurb}</p>
+              {sessionId === "offline-mode" && (
+                <div className="mt-3 pt-3 border-t border-border/30">
+                  <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+                    <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
+                    ChatBot service offline
+                  </div>
+                  <button
+                    onClick={reconnectToChatBot}
+                    className="mt-2 text-xs text-primary hover:text-primary/80 underline"
+                  >
+                    Try to reconnect
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-          <div className="flex flex-1 flex-col">
-            <ScrollArea className="flex-1">
-              <div className="space-y-6 px-6 py-6">
+          <div className="flex flex-1 flex-col min-h-0">
+            <ScrollArea className="flex-1 h-[500px]">
+              <div className="space-y-4 px-6 py-4">
                 {messages.map((message) => {
                   const isUser = message.role === "user";
                   return (
@@ -228,12 +400,18 @@ export function DocumentWorkbench() {
                       className={`flex items-start gap-3 ${isUser ? "flex-row-reverse" : ""}`}
                     >
                       <div
-                        className={`h-9 w-9 flex-shrink-0 rounded-full bg-cover bg-center ${
+                        className={`h-9 w-9 flex-shrink-0 rounded-full flex items-center justify-center ${
                           isUser
-                            ? "bg-[url('https://i.pravatar.cc/100?img=12')]"
-                            : "bg-[url('https://i.pravatar.cc/100?img=32')]"
+                            ? "bg-gradient-to-br from-green-400 to-blue-500"
+                            : "bg-gradient-to-br from-blue-400 to-purple-500"
                         }`}
-                      />
+                      >
+                        {isUser ? (
+                          <User className="h-5 w-5 text-white" />
+                        ) : (
+                          <Bot className="h-5 w-5 text-white" />
+                        )}
+                      </div>
                       <div className={`flex max-w-[75%] flex-col gap-1 ${isUser ? "items-end text-right" : ""}`}>
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">
                           {isUser ? "You" : "AI Assistant"}
@@ -253,13 +431,15 @@ export function DocumentWorkbench() {
                 })}
                 {isLoading && (
                   <div className="flex items-start gap-3">
-                    <div className="h-9 w-9 flex-shrink-0 rounded-full bg-[url('https://i.pravatar.cc/100?img=32')] bg-cover bg-center" />
+                    <div className="h-9 w-9 flex-shrink-0 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                      <Bot className="h-5 w-5 text-white" />
+                    </div>
                     <div className="flex max-w-[75%] flex-col gap-1">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">AI Assistant</p>
                       <div className="rounded-tl-none rounded-2xl bg-muted/70 px-4 py-3 text-sm text-foreground shadow-sm">
                         <span className="flex items-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          Drafting response...
+                          Generating response...
                         </span>
                       </div>
                     </div>
@@ -271,7 +451,7 @@ export function DocumentWorkbench() {
               <form onSubmit={onSubmit} className="flex flex-col gap-3 md:flex-row md:items-end">
                 <Textarea
                   name="message"
-                  placeholder="Request a disclosure checklist or ask the assistant to refine a section..."
+                  placeholder="Enter your requirements, e.g.: 'I want to create a token called CCT', or say 'you decide' to let the assistant auto-fill..."
                   disabled={isLoading}
                   className="min-h-[72px] flex-1 rounded-xl border-border bg-background"
                 />
@@ -292,14 +472,14 @@ export function DocumentWorkbench() {
             </div>
           </div>
         </section>
-        <aside className="order-3 flex flex-col xl:col-span-3">
+        <aside className="order-3 flex flex-col xl:col-span-3 h-[800px]">
           <div className="flex h-full flex-col rounded-2xl border border-border/70 bg-card/80 shadow-lg">
-            <div className="border-b border-border/60 px-6 py-4">
+            <div className="border-b border-border/60 px-6 py-3">
               <Button variant="secondary" size="sm" className="rounded-full px-4 py-2 text-xs font-semibold uppercase">
-                Compliance manual
+                Compliance Manual
               </Button>
             </div>
-            <ScrollArea className="flex-1 px-6 py-4">
+            <ScrollArea className="flex-1 h-[400px] px-6 py-3">
               <article
                 className="prose prose-sm max-w-none text-foreground dark:prose-invert"
                 dangerouslySetInnerHTML={{ __html: renderedDraft }}
@@ -308,20 +488,24 @@ export function DocumentWorkbench() {
             <div className="border-t border-border/60 px-6 py-4">
               <div className="space-y-4">
                 <Steps
-                  current={1}
+                  current={currentSection}
                   direction="vertical"
                   progressDot
                   items={COMPLIANCE_STEPS}
                   className="max-h-96 overflow-y-auto"
                 />
-                <Button variant="secondary" className="w-full rounded-lg">
+                <Button 
+                  variant="secondary" 
+                  className="w-full rounded-lg"
+                  onClick={handleExportPDF}
+                >
                   Export PDF
                 </Button>
               </div>
             </div>
             <div className="border-t border-border/60 px-6 py-4">
               <Button className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
-                Next: Send to contracts
+                Next: Generate Contract
               </Button>
             </div>
           </div>
