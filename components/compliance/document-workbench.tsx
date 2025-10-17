@@ -5,10 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Steps } from "@/components/ui/steps";
 import { FileUp, Loader2, MessageCircle, Paperclip, Send } from "lucide-react";
 import { v4 as uuid } from "uuid";
 
@@ -16,45 +15,25 @@ import type { ChatMessage } from "@/lib/ai";
 
 const SYSTEM_PROMPT = `You are a compliance co-pilot for RWA issuances. Ask targeted follow-up questions to capture missing disclosures, highlight regulatory gaps, and produce structured bullet summaries.`;
 
-type ExtractedField = {
-  id: string;
-  label: string;
-  placeholder: string;
-  value: string;
-};
+const COMPLIANCE_STEPS = [
+  { title: "Executive Summary", description: "Token symbol, contract address, basic info" },
+  { title: "Issuer & Governance", description: "Corporate structure, core team responsibilities" },
+  { title: "Token Overview & Classification", description: "Token utility, legal classification" },
+  { title: "Legal & Regulatory", description: "Offering routes, KYC/AML compliance" },
+  { title: "Tokenomics", description: "Supply, allocation, unlock, treasury" },
+  { title: "Fundraising & Use of Proceeds", description: "Past rounds, current funding usage" },
+  { title: "Technology & Security", description: "Blockchain & contract info, security audits" },
+  { title: "Listing & Trading", description: "Exchange platforms, trading pairs setup" },
+  { title: "Market Integrity & Disclosure", description: "Insider policy, disclosure requirements" },
+  { title: "Key Risks", description: "Legal, technical, market risk assessment" },
+  { title: "Incident Response & Delisting", description: "Emergency procedures, delisting triggers" },
+  { title: "Declarations & Signatures", description: "Authenticity statements, risk disclosures" },
+];
 
 type ConversationMessage = ChatMessage & { id: string };
 
-const INITIAL_FIELDS: ExtractedField[] = [
-  {
-    id: "issuerName",
-    label: "Issuer legal entity",
-    placeholder: "e.g. ABC Capital Ltd",
-    value: "",
-  },
-  {
-    id: "assetType",
-    label: "Underlying asset type",
-    placeholder: "Commercial real estate, trade finance receivables, ...",
-    value: "",
-  },
-  {
-    id: "jurisdiction",
-    label: "Issuance jurisdiction",
-    placeholder: "Singapore, Hong Kong, Delaware, ...",
-    value: "",
-  },
-  {
-    id: "offeringSize",
-    label: "Offering size",
-    placeholder: "USD 5M",
-    value: "",
-  },
-];
-
 export function DocumentWorkbench() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [fields, setFields] = useState(INITIAL_FIELDS);
   const [messages, setMessages] = useState<ConversationMessage[]>([
     {
       id: uuid(),
@@ -75,33 +54,13 @@ export function DocumentWorkbench() {
     [messages],
   );
 
-  const handleFieldChange = useCallback((id: string, value: string) => {
-    setFields((prev) => prev.map((field) => (field.id === id ? { ...field, value } : field)));
+  const buildDraft = useCallback(() => {
+    return "# Compliance summary\n\n_Auto-generated via AI co-pilot._";
   }, []);
 
-  const buildDraft = useCallback(() => {
-    const filled = fields.filter((field) => field.value.trim().length > 0);
-    if (!filled.length) {
-      return "Provide issuer details to synthesize a disclosure draft.";
-    }
-
-    const lines = filled.map((field) => `- **${field.label}:** ${field.value}`);
-    return `# Compliance summary\n\n${lines.join("\n")}\n\n_Auto-generated via AI co-pilot._`;
-  }, [fields]);
-
   const summaryBlurb = useMemo(() => {
-    const filled = fields.filter((field) => field.value.trim().length > 0);
-    if (!filled.length) {
-      return "Waiting for issuer attributes. Provide key representations to unlock a tailored compliance outline.";
-    }
-
-    const preview = filled
-      .slice(0, 3)
-      .map((field) => `${field.label}: ${field.value}`)
-      .join(" | ");
-
-    return filled.length > 3 ? `${preview} | ...` : preview;
-  }, [fields]);
+    return "Upload issuer materials and collaborate with the AI assistant to generate compliance documentation.";
+  }, []);
 
   const sendMessage = useCallback(
     async (input: string) => {
@@ -238,28 +197,6 @@ export function DocumentWorkbench() {
               )}
             </CardContent>
           </Card>
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Key representations</CardTitle>
-              <CardDescription>Validate or fill missing attributes requested by counsel.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {fields.map((field) => (
-                <div key={field.id} className="space-y-1.5">
-                  <Label htmlFor={field.id} className="text-xs uppercase tracking-wide text-muted-foreground">
-                    {field.label}
-                  </Label>
-                  <Input
-                    id={field.id}
-                    value={field.value}
-                    placeholder={field.placeholder}
-                    onChange={(event) => handleFieldChange(field.id, event.target.value)}
-                    className="rounded-lg border-border bg-background"
-                  />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         </aside>
         <section className="order-1 flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/80 shadow-xl xl:order-2 xl:col-span-5">
           <div className="border-b border-border/60 bg-card/60 px-6 py-6">
@@ -358,14 +295,9 @@ export function DocumentWorkbench() {
         <aside className="order-3 flex flex-col xl:col-span-3">
           <div className="flex h-full flex-col rounded-2xl border border-border/70 bg-card/80 shadow-lg">
             <div className="border-b border-border/60 px-6 py-4">
-              <div className="flex gap-4">
-                <Button variant="secondary" size="sm" className="rounded-full px-4 py-2 text-xs font-semibold uppercase">
-                  Compliance manual
-                </Button>
-                <Button variant="ghost" size="sm" className="rounded-full px-4 py-2 text-xs font-semibold uppercase">
-                  Contract preview
-                </Button>
-              </div>
+              <Button variant="secondary" size="sm" className="rounded-full px-4 py-2 text-xs font-semibold uppercase">
+                Compliance manual
+              </Button>
             </div>
             <ScrollArea className="flex-1 px-6 py-4">
               <article
@@ -373,15 +305,21 @@ export function DocumentWorkbench() {
                 dangerouslySetInnerHTML={{ __html: renderedDraft }}
               />
             </ScrollArea>
-            <div className="space-y-3 border-t border-border/60 px-6 py-5">
-              <div className="grid grid-cols-2 gap-3">
-                <Button variant="secondary" className="rounded-lg">
+            <div className="border-t border-border/60 px-6 py-4">
+              <div className="space-y-4">
+                <Steps
+                  current={1}
+                  direction="vertical"
+                  progressDot
+                  items={COMPLIANCE_STEPS}
+                  className="max-h-96 overflow-y-auto"
+                />
+                <Button variant="secondary" className="w-full rounded-lg">
                   Export PDF
                 </Button>
-                <Button variant="outline" className="rounded-lg border-primary/30 text-primary hover:bg-primary/10">
-                  Request legal review
-                </Button>
               </div>
+            </div>
+            <div className="border-t border-border/60 px-6 py-4">
               <Button className="w-full rounded-lg bg-primary text-primary-foreground hover:bg-primary/90">
                 Next: Send to contracts
               </Button>
@@ -389,35 +327,6 @@ export function DocumentWorkbench() {
           </div>
         </aside>
       </div>
-      <Card className="border-dashed border-primary/40 bg-primary/5 shadow-none">
-        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-          <div>
-            <CardTitle className="text-base">History & audit trail</CardTitle>
-            <CardDescription>
-              Snapshot of the most recent assistant actions to support review committee sign-off.
-            </CardDescription>
-          </div>
-          <Badge variant="outline" className="rounded-full border-primary/30 text-primary">
-            Auto-synced
-          </Badge>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {messages
-            .filter((message) => message.role === "assistant")
-            .slice(-3)
-            .map((message) => (
-              <div key={message.id} className="rounded-xl border border-primary/20 bg-background/90 p-4 text-sm shadow-sm">
-                <p className="font-semibold text-foreground">Assistant update</p>
-                <p className="mt-1 text-muted-foreground">{message.content}</p>
-              </div>
-            ))}
-          {!messages.some((message) => message.role === "assistant" && message.id !== messages[0]?.id) && (
-            <div className="rounded-xl border border-dashed border-primary/30 bg-background/80 p-4 text-sm text-muted-foreground">
-              Provide materials or follow-up questions to populate the audit trail.
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

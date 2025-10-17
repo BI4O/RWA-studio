@@ -42,11 +42,6 @@ export default function HomePage() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="https://github.com/wagmi-dev/viem" target="_blank" rel="noreferrer">
-              Explore viem integration
-            </Link>
-          </Button>
         </div>
       </header>
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">

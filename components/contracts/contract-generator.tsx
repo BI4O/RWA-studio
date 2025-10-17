@@ -1,211 +1,283 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Check,
-  ClipboardCopy,
-  Code2,
-  Rocket,
-  ShieldCheck,
-  Wallet2,
-} from "lucide-react";
+import { Check, ClipboardCopy } from "lucide-react";
 import { useAccount, useConnect, useDisconnect, useWalletClient } from "wagmi";
 import { baseSepolia, polygonAmoy, sepolia } from "wagmi/chains";
+import { CodeHighlighter } from "@/components/ui/code-highlighter";
 import type { Address } from "viem";
-
-const HERO_IMAGE =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuBOD2CLRrOMDTOmSU6yfBOb63j84nGR5-aM1VpsblcsweQRdg0DT6NUr0x7Oz9VPUBxrejO-wIY2-Xs2DspwxYfVXaQqL4Jepzg-c5fVwbeYSP1WxVKxRFqNnmBQGEiHnAQtE9EpWe2sShIQ4-PM-oIkTt1NiTTLyH0R27x6Ze6W-fMpqzMLvMeXd9J7zSAwE6fwcxBzQOnutsvrVXdmm9_L82w5KPmx9VshgpfCRw8LnX_tiWXc1RN6oX-BLAnypKVSCt2RVU1h94V";
 
 const CHAINS = [
   { id: sepolia.id, label: "Ethereum Sepolia" },
-  { id: baseSepolia.id, label: "Base Sepolia" },
-  { id: polygonAmoy.id, label: "Polygon Amoy" },
+  { id: baseSepolia.id, label: "BSC Testnet" },
+  { id: polygonAmoy.id, label: "Avalanche Fuji" },
+];
+
+const RISK_PROVIDERS = [
+  { id: "chainalysis", label: "Chainalysis" },
+  { id: "elliptic", label: "Elliptic" },
+  { id: "trm", label: "TRM Labs" },
 ];
 
 const DEFAULT_TEMPLATE = `// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
+pragma solidity ^0.8.0;
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/AccessControlEnumerable.sol";
 
-import {Ownable} from "openzeppelin-contracts/access/Ownable.sol";
+/// @notice ERC20 + EIP7943 RWA Token Contract (with UI interaction annotations)
+contract {{CONTRACT_NAME}} is ERC20, AccessControlEnumerable {
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant ENFORCER_ROLE = keccak256("ENFORCER_ROLE");
+    
+    mapping(address => bool) public whitelisted;
+    mapping(address => uint256) public frozen;
+    
+    bool public whitelistEnabled;
+    bool public freezeEnabled;
+    bool public forceTransferEnabled;
 
-contract RWAInterestNote is Ownable {
-    string public assetName;
-    uint256 public couponBps;
-    uint256 public maxSupply;
-
-    event Subscription(address indexed investor, uint256 notional, uint256 timestamp);
-
-    constructor(string memory _assetName, uint256 _couponBps, uint256 _maxSupply, address _owner) Ownable(_owner) {
-        assetName = _assetName;
-        couponBps = _couponBps;
-        maxSupply = _maxSupply;
+    /**
+     * Constructor parameters (corresponding to UI configuration items):
+     * 1️⃣ Token Name
+     * 2️⃣ Symbol
+     * 3️⃣ Initial Supply
+     * 4️⃣ Decimals (not used in constructor, inherited from ERC20)
+     * 5️⃣ Owner/Admin Address
+     * 6️⃣ Enforcer Role Address
+     * 7️⃣ Minter Role Address
+     * 8️⃣ Whitelist Mode
+     * 9️⃣ Default Whitelisted Addresses
+     * 🔟 Freeze Control
+     * 11️⃣ Force Transfer Control
+     */
+    constructor(
+        string memory name_,           // 1️⃣
+        string memory symbol_,         // 2️⃣
+        uint256 initialSupply_,        // 3️⃣
+        address admin_,                // 5️⃣
+        address enforcer_,             // 6️⃣
+        address minter_,               // 7️⃣
+        bool whitelistMode_,           // 8️⃣
+        address[] memory defaultWL_,   // 9️⃣
+        bool freezeCtrl_,              // 🔟
+        bool forceCtrl_                // 11️⃣
+    ) ERC20(name_, symbol_) {
+        _setupRole(DEFAULT_ADMIN_ROLE, admin_);
+        _setupRole(MINTER_ROLE, minter_);
+        _setupRole(ENFORCER_ROLE, enforcer_);
+        
+        _mint(admin_, initialSupply_ * (10 ** {{DECIMALS}}));
+        
+        whitelistEnabled = whitelistMode_;
+        freezeEnabled = freezeCtrl_;
+        forceTransferEnabled = forceCtrl_;
+        
+        // Initialize default whitelist
+        for (uint i = 0; i < defaultWL_.length; i++) {
+            whitelisted[defaultWL_[i]] = true;
+        }
     }
 
-    function subscribe() external payable {
-        require(msg.value > 0, "subscription requires value");
-        emit Subscription(msg.sender, msg.value, block.timestamp);
+    /// @notice Override transfer restrictions based on whitelist mode
+    function _beforeTokenTransfer(
+        address from, 
+        address to, 
+        uint256 amount
+    ) internal override {
+        super._beforeTokenTransfer(from, to, amount);
+        
+        // 8️⃣ If whitelist mode is enabled, restrict transfers to whitelisted addresses only
+        if (whitelistEnabled && from != address(0) && to != address(0)) {
+            require(whitelisted[from] && whitelisted[to], "Address not whitelisted");
+        }
+        
+        // 🔟 Check frozen balance if freeze control is enabled
+        if (freezeEnabled && from != address(0)) {
+            uint256 bal = balanceOf(from);
+            uint256 available = bal > frozen[from] ? bal - frozen[from] : 0;
+            require(amount <= available, "Insufficient unfrozen balance");
+        }
     }
-};
-`;
+
+    /// @notice 🔟 Enforcer can freeze user assets
+    function setFrozen(address user, uint256 amount) external onlyRole(ENFORCER_ROLE) {
+        require(freezeEnabled, "Freeze control disabled");
+        frozen[user] = amount;
+    }
+
+    /// @notice 11️⃣ Enforcer can force transfer (regulatory requirement)
+    function forceTransfer(
+        address from, 
+        address to, 
+        uint256 amount
+    ) external onlyRole(ENFORCER_ROLE) {
+        require(forceTransferEnabled, "Force transfer disabled");
+        _transfer(from, to, amount);
+    }
+
+    /// @notice 9️⃣ Admin can manage whitelist
+    function setWhitelist(address user, bool allowed) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        whitelisted[user] = allowed;
+    }
+
+    /// @notice 7️⃣ Minter can mint new tokens
+    function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
+        _mint(to, amount);
+    }
+
+    /// @notice Admin can enable/disable whitelist mode
+    function setWhitelistEnabled(bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        whitelistEnabled = enabled;
+    }
+
+    /// @notice Admin can enable/disable freeze control
+    function setFreezeEnabled(bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        freezeEnabled = enabled;
+    }
+
+    /// @notice Admin can enable/disable force transfer
+    function setForceTransferEnabled(bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        forceTransferEnabled = enabled;
+    }
+}`;
 
 type DeploymentStatus = "idle" | "preparing" | "submitting" | "success" | "error";
 
 export function ContractGenerator() {
-  const [assetName, setAssetName] = useState("Harborview Warehouse");
-  const [couponBps, setCouponBps] = useState(850);
-  const [maxSupply, setMaxSupply] = useState(1_000_000);
-  const [governanceNotes, setGovernanceNotes] = useState("Transfers restricted to KYC-approved wallets.");
+  const [mounted, setMounted] = useState(false);
+  const [tokenName, setTokenName] = useState("XAU Gold Token");
+  const [symbol, setSymbol] = useState("XAU");
+  const [initialSupply, setInitialSupply] = useState(1_000_000);
+  const [decimals, setDecimals] = useState(18);
+  const [ownerAddress, setOwnerAddress] = useState("0x0000000000000000000000000000000000000000");
+  const [enforcerAddress, setEnforcerAddress] = useState("0x0000000000000000000000000000000000000000");
+  const [minterAddress, setMinterAddress] = useState("0x0000000000000000000000000000000000000000");
+  const [whitelistMode, setWhitelistMode] = useState(false);
+  const [defaultWhitelisted, setDefaultWhitelisted] = useState("");
+  const [freezeControl, setFreezeControl] = useState(false);
+  const [forceTransferControl, setForceTransferControl] = useState(false);
   const [selectedChain, setSelectedChain] = useState<number>(CHAINS[0]?.id ?? sepolia.id);
-  const [adminAddress, setAdminAddress] = useState("0x0000000000000000000000000000000000000000");
-  const [governanceModel, setGovernanceModel] = useState("Foundation + Board oversight");
-  const [copiedSource, setCopiedSource] = useState(false);
-  const [copiedArgs, setCopiedArgs] = useState(false);
+  const [selectedRiskProvider, setSelectedRiskProvider] = useState(RISK_PROVIDERS[0]?.id ?? "chainalysis");
+  const [copiedCode, setCopiedCode] = useState(false);
   const [status, setStatus] = useState<DeploymentStatus>("idle");
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
+  const [highlightedSections, setHighlightedSections] = useState<string[]>([]);
 
   const { address, isConnected } = useAccount();
   const { connect, connectors, error: connectError, isLoading: isConnecting } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: walletClient } = useWalletClient();
-  const primaryConnector = connectors[0];
 
-  const constructorArgs = useMemo(
-    () =>
-      [
-        assetName,
-        BigInt(couponBps),
-        BigInt(maxSupply),
-        (address ?? adminAddress) as Address,
-      ] as const,
-    [address, adminAddress, assetName, couponBps, maxSupply],
-  );
+  // Fix hydration error by ensuring component only renders on client
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const contractSource = useMemo(() => {
-    return DEFAULT_TEMPLATE.replace("Harborview Warehouse", assetName)
-      .replace("850", couponBps.toString())
-      .replace("1000000", maxSupply.toString());
-  }, [assetName, couponBps, maxSupply]);
+    return DEFAULT_TEMPLATE
+      .replace(/{{CONTRACT_NAME}}/g, `${symbol}_RWA_Token`)
+      .replace(/{{DECIMALS}}/g, decimals.toString());
+  }, [symbol, decimals]);
 
-  const configurationSnapshot = useMemo(
-    () => [
-      { label: "Total supply", value: new Intl.NumberFormat("en-US").format(maxSupply) },
-      { label: "Coupon", value: `${(couponBps / 100).toFixed(2)}% APR` },
-      { label: "Governance", value: governanceModel },
-    ],
-    [couponBps, governanceModel, maxSupply],
-  );
+  // Function to trigger highlight when parameter changes
+  const highlightChange = useCallback((section: string) => {
+    setHighlightedSections([section]);
+    // Clear highlight after 3 seconds
+    setTimeout(() => setHighlightedSections([]), 3000);
+  }, []);
 
-  const deploymentBadges = useMemo(
-    () => [
-      { label: "Wallet", value: address ?? "Not connected" },
-      { label: "Network", value: CHAINS.find((chain) => chain.id === selectedChain)?.label ?? "Unknown" },
-      { label: "Admin", value: adminAddress ? `${adminAddress.slice(0, 6)}...${adminAddress.slice(-4)}` : "Pending" },
-      { label: "Governance", value: governanceModel },
-      {
-        label: "Status",
-        value:
-          status === "idle"
-            ? "Idle"
-            : status === "preparing"
-              ? "Preparing"
-              : status === "submitting"
-                ? "Submitting"
-                : status === "success"
-                  ? "Success"
-                  : "Error",
-      },
-    ],
-    [address, adminAddress, governanceModel, selectedChain, status],
-  );
+  // Track parameter changes and trigger highlights
+  useEffect(() => {
+    highlightChange(`${symbol}_RWA_Token`);
+  }, [symbol, highlightChange]);
+
+  useEffect(() => {
+    highlightChange(`10 ** ${decimals}`);
+  }, [decimals, highlightChange]);
+
+  useEffect(() => {
+    if (whitelistMode) {
+      highlightChange("whitelistEnabled");
+    }
+  }, [whitelistMode, highlightChange]);
+
+  useEffect(() => {
+    if (freezeControl) {
+      highlightChange("freezeEnabled");
+    }
+  }, [freezeControl, highlightChange]);
+
+  useEffect(() => {
+    if (forceTransferControl) {
+      highlightChange("forceTransferEnabled");
+    }
+  }, [forceTransferControl, highlightChange]);
+
+  const handleCopy = useCallback(async (value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  }, []);
 
   const deployContract = useCallback(async () => {
-    if (!isConnected || !address) {
-      throw new Error("Connect a wallet before deploying");
-    }
-    if (!walletClient) {
-      throw new Error("Wallet client unavailable. Reconnect your wallet.");
-    }
-    if (walletClient.chain?.id && walletClient.chain.id !== selectedChain) {
-      throw new Error("Switch the connected wallet to the selected network before deploying.");
-    }
-
-    setStatus("preparing");
-
-    const abi = [
-      {
-        type: "constructor",
-        inputs: [
-          { name: "_assetName", type: "string" },
-          { name: "_couponBps", type: "uint256" },
-          { name: "_maxSupply", type: "uint256" },
-          { name: "_owner", type: "address" },
-        ],
-        stateMutability: "nonpayable",
-      },
-      {
-        type: "event",
-        name: "Subscription",
-        inputs: [
-          { name: "investor", type: "address", indexed: true },
-          { name: "notional", type: "uint256", indexed: false },
-          { name: "timestamp", type: "uint256", indexed: false },
-        ],
-        anonymous: false,
-      },
-      {
-        type: "function",
-        name: "subscribe",
-        inputs: [],
-        outputs: [],
-        stateMutability: "payable",
-      },
-    ] as const;
-
-    const bytecode =
-      "0x608060405234801561001057600080fd5b50604051610904380380610904833981016040818152825181835260008054600160a060020a0319163317905591506002556003556000600460009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16600073ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16146100c257600080fd5b60008054600160a060020a0390811691161461010257600080fd5b600054600160a060020a031681565b600054600160a060020a0316331461014457600080fd5b60018054600160a060020a0319163317815561020b908190602001906100f9565b5050610273565b600081359050610223816102db565b92915050565b60006020828403121561023f57600080fd5b600061024d84828501610218565b91505092915050565b6020808252601b908201527f737562736372697074696f6e2072657175697265732076616c756500000000604082015260600190565b600060408201905061029a6000830184610218565b92915050565b600081519050919050565b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006102e9826102be565b9050919050565b6102f9816102de565b811461030457600080fd5b50565b600081359050610316816102f0565b92915050565b6000806040838503121561033157600080fd5b600061033f858286016102c9565b9250506020610350858286016102c9565b915050925092905056fea26469706673582212201149963a0b9b4735bc2d54d648e64def27906631f7d7b61e32cd93e2c9ad466164736f6c63430008170033";
-
     try {
-      setStatus("submitting");
-      const hash = await walletClient.deployContract({
-        abi,
-        bytecode,
-        account: address as Address,
-        args: constructorArgs,
+      setStatus("preparing");
+      
+      // TODO: This is where actual deployment logic will be implemented
+      // When you provide the account, we'll add the real deployment logic here
+      console.log("Deploying contract with parameters:", {
+        tokenName,
+        symbol,
+        initialSupply,
+        decimals,
+        ownerAddress: address ?? ownerAddress,
+        enforcerAddress,
+        minterAddress,
+        whitelistMode,
+        defaultWhitelisted: defaultWhitelisted.split(",").map(addr => addr.trim()).filter(addr => addr.length > 0),
+        freezeControl,
+        forceTransferControl,
+        selectedChain,
+        selectedRiskProvider
       });
-      setTransactionHash(hash as string);
+
+      setStatus("submitting");
+      
+      // Simulate deployment process
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
       setStatus("success");
+      setTransactionHash("0x1234567890abcdef1234567890abcdef12345678");
     } catch (error) {
-      console.error(error);
+      console.error("Deployment failed:", error);
       setStatus("error");
     }
-  }, [address, constructorArgs, isConnected, selectedChain, walletClient]);
+  }, [
+    tokenName,
+    symbol,
+    initialSupply,
+    decimals,
+    address,
+    ownerAddress,
+    enforcerAddress,
+    minterAddress,
+    whitelistMode,
+    defaultWhitelisted,
+    freezeControl,
+    forceTransferControl,
+    selectedChain,
+    selectedRiskProvider
+  ]);
 
-  const governanceChecklist = useMemo(
-    () => [
-      "Investor onboarding: Verify KYC/AML workflow integrates with off-chain provider.",
-      `Asset servicing: Confirm coupon calculations align with ${(couponBps / 100).toFixed(2)}% APR.`,
-      "Reporting: Publish NAV statements to the monitoring dashboard weekly.",
-      governanceNotes,
-    ],
-    [couponBps, governanceNotes],
-  );
-
-  const handleCopy = useCallback(async (value: string, type: "source" | "args") => {
-    await navigator.clipboard.writeText(value);
-    if (type === "source") {
-      setCopiedSource(true);
-      setTimeout(() => setCopiedSource(false), 2000);
-    } else {
-      setCopiedArgs(true);
-      setTimeout(() => setCopiedArgs(false), 2000);
-    }
-  }, []);
+  // Don't render until mounted to prevent hydration mismatch
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <div className="overflow-hidden rounded-3xl border border-border/70 bg-card shadow-2xl">
@@ -215,292 +287,224 @@ export function ContractGenerator() {
             <div>
               <h2 className="text-xl font-semibold text-foreground">Contract configuration</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Parameterize issuance economics and governance before generating Solidity artifacts.
+                Configure RWA token parameters before generating smart contract code.
               </p>
             </div>
             <div className="space-y-5">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Network selection</p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {CHAINS.map((chain) => (
-                    <label key={chain.id} className="relative block cursor-pointer">
-                      <input
-                        type="radio"
-                        name="network"
-                        value={chain.id}
-                        checked={selectedChain === chain.id}
-                        onChange={() => setSelectedChain(chain.id)}
-                        className="peer sr-only"
-                      />
-                      <div className="rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm font-medium transition peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-primary">
+              {/* Network and Risk Provider moved to top */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Select Network</Label>
+                  <select
+                    value={selectedChain}
+                    onChange={(event) => setSelectedChain(Number(event.target.value))}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2"
+                  >
+                    {CHAINS.map((chain) => (
+                      <option key={chain.id} value={chain.id}>
                         {chain.label}
-                      </div>
-                    </label>
-                  ))}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Risk Provider</Label>
+                  <select
+                    value={selectedRiskProvider}
+                    onChange={(event) => setSelectedRiskProvider(event.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2"
+                  >
+                    {RISK_PROVIDERS.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
-              <div className="grid gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="assetName">Asset name</Label>
-                  <Input
-                    id="assetName"
-                    value={assetName}
-                    onChange={(event) => setAssetName(event.target.value)}
-                    className="rounded-xl border-border bg-background"
-                  />
+
+              <div className="border-t border-border/20 pt-4">
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="tokenName">Token Name</Label>
+                    <Input
+                      id="tokenName"
+                      value={tokenName}
+                      placeholder="e.g. XAU Gold Token"
+                      onChange={(event) => setTokenName(event.target.value)}
+                      className="rounded-xl border-border bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="symbol">Symbol</Label>
+                    <Input
+                      id="symbol"
+                      value={symbol}
+                      placeholder="e.g. XAU"
+                      onChange={(event) => setSymbol(event.target.value)}
+                      className="rounded-xl border-border bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="initialSupply">Initial Supply</Label>
+                    <Input
+                      id="initialSupply"
+                      type="number"
+                      value={initialSupply}
+                      min={1}
+                      onChange={(event) => setInitialSupply(Number(event.target.value))}
+                      className="rounded-xl border-border bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="decimals">Decimals</Label>
+                    <Input
+                      id="decimals"
+                      type="number"
+                      value={decimals}
+                      min={0}
+                      max={18}
+                      onChange={(event) => setDecimals(Number(event.target.value))}
+                      className="rounded-xl border-border bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ownerAddress">Owner / Admin Address</Label>
+                    <Input
+                      id="ownerAddress"
+                      value={ownerAddress}
+                      placeholder="0x..."
+                      onChange={(event) => setOwnerAddress(event.target.value)}
+                      className="rounded-xl border-border bg-background font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="enforcerAddress">Enforcer Role</Label>
+                    <Input
+                      id="enforcerAddress"
+                      value={enforcerAddress}
+                      placeholder="0x..."
+                      onChange={(event) => setEnforcerAddress(event.target.value)}
+                      className="rounded-xl border-border bg-background font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="minterAddress">Minter Role</Label>
+                    <Input
+                      id="minterAddress"
+                      value={minterAddress}
+                      placeholder="0x..."
+                      onChange={(event) => setMinterAddress(event.target.value)}
+                      className="rounded-xl border-border bg-background font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="whitelistMode"
+                        checked={whitelistMode}
+                        onChange={(event) => setWhitelistMode(event.target.checked)}
+                        className="rounded border-border"
+                      />
+                      <Label htmlFor="whitelistMode">Whitelist Mode</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="freezeControl"
+                        checked={freezeControl}
+                        onChange={(event) => setFreezeControl(event.target.checked)}
+                        className="rounded border-border"
+                      />
+                      <Label htmlFor="freezeControl">Freeze Control</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="forceTransferControl"
+                        checked={forceTransferControl}
+                        onChange={(event) => setForceTransferControl(event.target.checked)}
+                        className="rounded border-border"
+                      />
+                      <Label htmlFor="forceTransferControl">Force Transfer Control</Label>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="defaultWhitelisted">Default Whitelisted Addresses</Label>
+                    <Textarea
+                      id="defaultWhitelisted"
+                      value={defaultWhitelisted}
+                      placeholder="0x..., 0x..., 0x..."
+                      onChange={(event) => setDefaultWhitelisted(event.target.value)}
+                      className="min-h-[80px] rounded-2xl border-border bg-background font-mono text-sm"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="coupon">Coupon (bps)</Label>
-                  <Input
-                    id="coupon"
-                    type="number"
-                    value={couponBps}
-                    min={0}
-                    onChange={(event) => setCouponBps(Number(event.target.value))}
-                    className="rounded-xl border-border bg-background"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="supply">Max supply (units)</Label>
-                  <Input
-                    id="supply"
-                    type="number"
-                    value={maxSupply}
-                    min={1}
-                    onChange={(event) => setMaxSupply(Number(event.target.value))}
-                    className="rounded-xl border-border bg-background"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="adminAddress">Admin address</Label>
-                  <Input
-                    id="adminAddress"
-                    value={adminAddress}
-                    placeholder="0x..."
-                    onChange={(event) => setAdminAddress(event.target.value)}
-                    className="rounded-xl border-border bg-background font-mono text-sm"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="governanceModel">Governance model</Label>
-                  <Input
-                    id="governanceModel"
-                    value={governanceModel}
-                    onChange={(event) => setGovernanceModel(event.target.value)}
-                    className="rounded-xl border-border bg-background"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="governanceNotes">Governance guardrails</Label>
-                <Textarea
-                  id="governanceNotes"
-                  value={governanceNotes}
-                  onChange={(event) => setGovernanceNotes(event.target.value)}
-                  className="min-h-[120px] rounded-2xl border-border bg-background"
-                />
               </div>
             </div>
           </div>
         </aside>
+        
         <section className="flex-1 bg-gradient-to-b from-muted/30 via-background to-background px-6 py-8 lg:px-10">
-          <div
-            className="overflow-hidden rounded-3xl border border-border/60 bg-cover bg-center p-6 text-white shadow-2xl"
-            style={{ backgroundImage: `linear-gradient(0deg, rgba(17,24,39,0.7), rgba(17,24,39,0.25)), url(${HERO_IMAGE})` }}
-          >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="rounded-3xl border border-border/60 bg-card/95 shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
               <div>
-                <p className="text-sm uppercase tracking-wider text-white/70">Live configuration snapshot</p>
-                <h3 className="mt-2 text-2xl font-semibold">{assetName}</h3>
-                <p className="mt-1 text-sm text-white/80">
-                  Parameters synced from compliance workspace. Adjust economics before broadcasting to the selected network.
+                <h4 className="text-base font-semibold text-foreground">Real-time generated contract</h4>
+                <p className="text-sm text-muted-foreground">
+                  Smart contract code generated based on your configuration parameters.
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {configurationSnapshot.map((item) => (
-                  <div key={item.label} className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm backdrop-blur">
-                    <p className="text-white/70">{item.label}</p>
-                    <p className="font-semibold text-white">{item.value}</p>
-                  </div>
-                ))}
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => handleCopy(contractSource)}
+              >
+                {copiedCode ? (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <ClipboardCopy className="mr-2 h-4 w-4" />
+                    Copy code
+                  </>
+                )}
+              </Button>
             </div>
-          </div>
-          <div className="mt-8 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-6">
-              <div className="rounded-3xl border border-border/60 bg-card/95 shadow-xl">
-                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
-                  <div>
-                    <h4 className="text-base font-semibold text-foreground">Real-time generated contract</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Mirror of the solidity artifact based on the parameters configured on the left.
-                    </p>
-                  </div>
-                  <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide">
-                    autogen
-                  </Badge>
-                </div>
-                <ScrollArea className="h-[360px] px-6 py-5 text-xs">
-                  <pre className="whitespace-pre-wrap font-mono leading-relaxed text-foreground/90">{contractSource}</pre>
-                </ScrollArea>
-                <Separator />
-                <div className="flex flex-wrap gap-3 px-6 py-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="rounded-xl"
-                    onClick={() => handleCopy(contractSource, "source")}
-                  >
-                    {copiedSource ? (
-                      <>
-                        <Check className="mr-2 h-4 w-4" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <ClipboardCopy className="mr-2 h-4 w-4" />
-                        Copy source
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="rounded-xl"
-                    onClick={() => handleCopy(JSON.stringify(constructorArgs), "args")}
-                  >
-                    {copiedArgs ? (
-                      <>
-                        <Check className="mr-2 h-4 w-4" />
-                        Constructor copied
-                      </>
-                    ) : (
-                      <>
-                        <Code2 className="mr-2 h-4 w-4" />
-                        Copy constructor args
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-              <div className="rounded-3xl border border-border/60 bg-card/90 shadow-lg">
-                <div className="flex items-center gap-3 border-b border-border/60 px-6 py-4">
-                  <ShieldCheck className="h-5 w-5 text-primary" />
-                  <div>
-                    <h4 className="text-base font-semibold text-foreground">Governance checklist</h4>
-                    <p className="text-sm text-muted-foreground">Operational steps before going live.</p>
-                  </div>
-                </div>
-                <div className="px-6 py-5">
-                  <ul className="list-disc space-y-3 pl-5 text-sm text-muted-foreground">
-                    {governanceChecklist.map((item, index) => (
-                      <li key={`governance-${index}`}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              <div className="rounded-3xl border border-border/60 bg-card/90 shadow-lg">
-                <div className="flex items-center gap-3 border-b border-border/60 px-6 py-4">
-                  <Rocket className="h-5 w-5 text-primary" />
-                  <div>
-                    <h4 className="text-base font-semibold text-foreground">Post-deployment hooks</h4>
-                    <p className="text-sm text-muted-foreground">Automations triggered on successful broadcast.</p>
-                  </div>
-                </div>
-                <div className="space-y-3 px-6 py-5 text-sm text-muted-foreground">
-                  <p>
-                    Use <code className="font-mono text-xs text-foreground">recordDeployment</code> from{" "}
-                    <code className="font-mono text-xs text-foreground">lib/db</code> to write deployments to Neon and drive the
-                    analytics dashboard.
-                  </p>
-                  <p>
-                    Push updates to Chainlink Functions for oracle calibration, notify trustees, and log attestations for the
-                    compliance archive.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-6">
-              <div className="rounded-3xl border border-border/60 bg-card/95 shadow-xl">
-                <div className="flex items-center gap-3 border-b border-border/60 px-6 py-4">
-                  <Wallet2 className="h-5 w-5 text-primary" />
-                  <div>
-                    <h4 className="text-base font-semibold text-foreground">Deployment panel</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Connect a wallet via wagmi and broadcast with viem under the hood.
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-4 px-6 py-5">
-                  {!isConnected ? (
-                    <Button
-                      type="button"
-                      className="w-full rounded-xl"
-                      onClick={() => primaryConnector && connect({ connector: primaryConnector })}
-                      disabled={!primaryConnector || isConnecting}
-                    >
-                      {isConnecting ? "Connecting..." : primaryConnector ? `Connect ${primaryConnector.name}` : "No wallet available"}
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full rounded-xl"
-                      onClick={() => disconnect()}
-                    >
-                      Disconnect {address?.slice(0, 6)}...{address?.slice(-4)}
-                    </Button>
-                  )}
-                  {connectError && <p className="text-xs text-destructive">{connectError.message}</p>}
-                  <div className="flex flex-wrap gap-2">
-                    {deploymentBadges.map((badge) => (
-                      <Badge key={badge.label} variant="outline" className="rounded-full border-border/70 px-3 py-1 text-xs">
-                        <span className="font-semibold text-foreground">{badge.label}:</span>{" "}
-                        <span className="text-muted-foreground">{badge.value}</span>
-                      </Badge>
-                    ))}
-                  </div>
-                  <Separator />
-                  <Button
-                    type="button"
-                    className="w-full rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
-                    onClick={() =>
-                      deployContract().catch((error) => {
-                        console.error(error);
-                        alert(error instanceof Error ? error.message : "Failed to deploy contract");
-                      })
-                    }
-                    disabled={!isConnected || status === "submitting"}
-                  >
-                    {status === "submitting" ? "Broadcasting..." : "Deploy contract"}
-                  </Button>
-                  {transactionHash && (
-                    <p className="text-xs text-muted-foreground">
-                      Deployment submitted: <span className="font-mono">{transactionHash}</span>
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="rounded-3xl border border-dashed border-primary/40 bg-primary/5 p-6 shadow-md">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h4 className="text-base font-semibold text-foreground">Handoff checklist</h4>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Confirm secondary sign-offs before executing the deployment playbook.
-                    </p>
-                    <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-                      <li>Legal review approval synced from compliance workspace</li>
-                      <li>Treasury loaded with deployment gas budget</li>
-                      <li>Monitoring alerts configured in dashboard module</li>
-                    </ul>
-                  </div>
-                  <Badge variant="outline" className="rounded-full border-primary/40 text-primary">
-                    Ready
-                  </Badge>
-                </div>
-              </div>
+            <ScrollArea className="h-[500px] px-6 py-5">
+              <CodeHighlighter 
+                code={contractSource} 
+                highlightedSections={highlightedSections}
+                className="text-foreground/90"
+              />
+            </ScrollArea>
+            <div className="border-t border-border/60 px-6 py-4">
+              <Button
+                type="button"
+                className="w-full rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={deployContract}
+                disabled={status === "submitting" || status === "preparing"}
+              >
+                {status === "preparing" ? "Preparing..." : 
+                 status === "submitting" ? "Deploying..." : 
+                 status === "success" ? "Deploy Another Contract" :
+                 status === "error" ? "Retry Deployment" :
+                 "Deploy Contract"}
+              </Button>
+              {transactionHash && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Deployment submitted: <span className="font-mono">{transactionHash}</span>
+                </p>
+              )}
+              {status === "error" && (
+                <p className="mt-2 text-xs text-destructive">
+                  Deployment failed. Please check your configuration and try again.
+                </p>
+              )}
             </div>
           </div>
         </section>

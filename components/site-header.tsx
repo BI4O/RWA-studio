@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
 import { HelpCircle, Moon, Sun } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/compliance", label: "Compliance Files" },
-  { href: "/contracts", label: "Contract Generation" },
+  { href: "/compliance", label: "Compliance" },
+  { href: "/contracts", label: "Contract" },
   { href: "/dashboard", label: "Dashboard" },
 ];
 
@@ -47,7 +47,7 @@ export function SiteHeader() {
         <div className="flex items-center gap-3">
           <BrandMark />
           <Link href="/" className="text-base font-semibold text-foreground md:text-lg">
-            RWA Compliance Suite
+            RWA studio
           </Link>
         </div>
         <nav className="hidden md:block">
