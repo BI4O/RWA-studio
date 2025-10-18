@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useMemo } from "react";
 
 interface CodeHighlighterProps {
   code: string;
@@ -25,86 +25,65 @@ const SOLIDITY_TYPES = [
 
 const SOLIDITY_CONSTANTS = ['true', 'false', 'null', 'undefined', 'this', 'super'];
 
+const HighlightedSpan: React.FC<{ className?: string; children: React.ReactNode }> = ({
+  className = "",
+  children
+}) => <span className={className}>{children}</span>;
+
 export function CodeHighlighter({ code, highlightedSections = [], className = "" }: CodeHighlighterProps) {
   const codeRef = useRef<HTMLDivElement>(null);
-  const [processedCode, setProcessedCode] = useState("");
 
-  const highlightSyntax = (sourceCode: string) => {
-    let highlighted = sourceCode;
-
-    // Highlight comments
-    highlighted = highlighted.replace(
-      /\/\/.*$/gm,
-      '<span class="text-green-500 italic">$&</span>'
-    );
-    highlighted = highlighted.replace(
-      /\/\*[\s\S]*?\*\//g,
-      '<span class="text-green-500 italic">$&</span>'
-    );
-
-    // Highlight strings
-    highlighted = highlighted.replace(
-      /"([^"\\]|\\.)*"/g,
-      '<span class="text-yellow-400">$&</span>'
-    );
-    highlighted = highlighted.replace(
-      /'([^'\\]|\\.)*'/g,
-      '<span class="text-yellow-400">$&</span>'
-    );
-
-    // Highlight numbers
-    highlighted = highlighted.replace(
-      /\b\d+(\.\d+)?\b/g,
-      '<span class="text-purple-400">$&</span>'
-    );
-
-    // Highlight keywords
-    SOLIDITY_KEYWORDS.forEach(keyword => {
-      const regex = new RegExp(`\\b${keyword}\\b`, 'g');
-      highlighted = highlighted.replace(regex, `<span class="text-blue-400 font-semibold">${keyword}</span>`);
-    });
-
-    // Highlight types
-    SOLIDITY_TYPES.forEach(type => {
-      const regex = new RegExp(`\\b${type}\\b`, 'g');
-      highlighted = highlighted.replace(regex, `<span class="text-cyan-400 font-medium">${type}</span>`);
-    });
-
-    // Highlight constants
-    SOLIDITY_CONSTANTS.forEach(constant => {
-      const regex = new RegExp(`\\b${constant}\\b`, 'g');
-      highlighted = highlighted.replace(regex, `<span class="text-orange-400">${constant}</span>`);
-    });
-
-    // Highlight function names
-    highlighted = highlighted.replace(
-      /function\s+(\w+)/g,
-      'function <span class="text-indigo-400 font-medium">$1</span>'
-    );
-
-    // Highlight contract names
-    highlighted = highlighted.replace(
-      /contract\s+(\w+)/g,
-      'contract <span class="text-pink-400 font-bold">$1</span>'
-    );
-
-    // Highlight special sections that are currently being modified
-    highlightedSections.forEach(section => {
-      if (highlighted.includes(section)) {
-        const regex = new RegExp(section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-        highlighted = highlighted.replace(
-          regex,
-          `<span class="bg-yellow-200 dark:bg-yellow-900 px-1 rounded animate-pulse">${section}</span>`
-        );
+  const processedTokens = useMemo(() => {
+    const processSegment = (segment: string): React.ReactNode => {
+      // Check if it's a comment
+      if (segment.startsWith('//') || (segment.startsWith('/*') && segment.endsWith('*/'))) {
+        return <HighlightedSpan className="text-green-500 italic">{segment}</HighlightedSpan>;
       }
+
+      // Check if it's a string
+      if ((segment.startsWith('"') && segment.endsWith('"')) ||
+          (segment.startsWith("'") && segment.endsWith("'"))) {
+        return <HighlightedSpan className="text-yellow-400">{segment}</HighlightedSpan>;
+      }
+
+      // Check if it's a number
+      if (/^\d+(\.\d+)?$/.test(segment)) {
+        return <HighlightedSpan className="text-purple-400">{segment}</HighlightedSpan>;
+      }
+
+      // Check if it's a keyword
+      if (SOLIDITY_KEYWORDS.includes(segment)) {
+        return <HighlightedSpan className="text-blue-400 font-semibold">{segment}</HighlightedSpan>;
+      }
+
+      // Check if it's a type
+      if (SOLIDITY_TYPES.includes(segment)) {
+        return <HighlightedSpan className="text-cyan-400 font-medium">{segment}</HighlightedSpan>;
+      }
+
+      // Check if it's a constant
+      if (SOLIDITY_CONSTANTS.includes(segment)) {
+        return <HighlightedSpan className="text-orange-400">{segment}</HighlightedSpan>;
+      }
+
+      // Check for highlighted sections
+      const isHighlighted = highlightedSections.some(section =>
+        segment.includes(section)
+      );
+      if (isHighlighted) {
+        return <HighlightedSpan className="bg-yellow-200 dark:bg-yellow-900 px-1 rounded animate-pulse">{segment}</HighlightedSpan>;
+      }
+
+      return segment;
+    };
+
+    // Split by common delimiters and process
+    const words = code.split(/(\s+|[{}();,\[\]()]|\/\/.*$|\/\*[\s\S]*?\*\/|"[^"\\]*"|'[^'\\']*'|\b\d+(\.\d+)?\b)/gm);
+
+    return words.map((word, index) => {
+      if (!word || word.trim() === '') return word;
+      return <span key={index}>{processSegment(word)}</span>;
     });
-
-    return highlighted;
-  };
-
-  useEffect(() => {
-    const highlighted = highlightSyntax(code);
-    setProcessedCode(highlighted);
   }, [code, highlightedSections]);
 
   // Auto-scroll to highlighted sections
@@ -112,8 +91,8 @@ export function CodeHighlighter({ code, highlightedSections = [], className = ""
     if (highlightedSections.length > 0 && codeRef.current) {
       const highlightedElement = codeRef.current.querySelector('.animate-pulse');
       if (highlightedElement) {
-        highlightedElement.scrollIntoView({ 
-          behavior: 'smooth', 
+        highlightedElement.scrollIntoView({
+          behavior: 'smooth',
           block: 'center',
           inline: 'nearest'
         });
@@ -123,10 +102,9 @@ export function CodeHighlighter({ code, highlightedSections = [], className = ""
 
   return (
     <div ref={codeRef} className={className}>
-      <pre 
-        className="whitespace-pre-wrap font-mono leading-relaxed text-sm"
-        dangerouslySetInnerHTML={{ __html: processedCode }}
-      />
+      <pre className="whitespace-pre-wrap font-mono leading-relaxed text-sm">
+        {processedTokens}
+      </pre>
     </div>
   );
 }

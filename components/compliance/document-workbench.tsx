@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Steps } from "@/components/ui/steps";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { FileUp, Loader2, MessageCircle, Paperclip, Send, Bot, User } from "lucide-react";
 import { v4 as uuid } from "uuid";
 
@@ -30,6 +31,7 @@ interface ChatBotResponse {
   section_complete: boolean;
   conversation_history: ChatBotMessage[];
   document_state: any;
+  last_completed_section?: number;
 }
 
 const COMPLIANCE_STEPS = [
@@ -67,20 +69,54 @@ export function DocumentWorkbench() {
   const [sectionTitle, setSectionTitle] = useState("Executive Summary");
   const [mounted, setMounted] = useState(false);
 
-  // PDF export function
-  const handleExportPDF = useCallback(() => {
-    const content = "# CloudComputer RWA Listing Memo\n\nThis is a sample RWA listing memo document.\n\n## Executive Summary\n\nThis document outlines the key details for the RWA token listing.\n\n## Token Details\n\n- Token Name: CloudComputer Token\n- Symbol: CC\n- Total Supply: 1,000,000\n- Blockchain: Ethereum\n\n## Compliance\n\nAll regulatory requirements have been met.\n\n## Risk Assessment\n\nLow to moderate risk assessment completed.\n\n## Conclusion\n\nRecommended for listing approval.";
-    
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'CloudComputer_RWA_Listing_Memo.md';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, []);
+  // DOC export function
+  const handleExportPDF = useCallback(async () => {
+    try {
+      // 读取项目根目录下的 CloudComputer_RWA_Listing_Memo.md 文件
+      const response = await fetch('/CloudComputer_RWA_Listing_Memo.md');
+
+      if (!response.ok) {
+        // 如果文件不存在，使用当前的 draft 内容作为fallback
+        const blob = new Blob([draft], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'CloudComputer_RWA_Listing_Memo.md';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      // 读取文件内容
+      const content = await response.text();
+
+      // 创建下载
+      const blob = new Blob([content], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'CloudComputer_RWA_Listing_Memo.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error('Export failed:', error);
+      // 如果出错，使用当前的 draft 内容作为fallback
+      const blob = new Blob([draft], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'CloudComputer_RWA_Listing_Memo.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  }, [draft]);
 
   // 修复hydration问题
   useEffect(() => {
@@ -174,38 +210,33 @@ export function DocumentWorkbench() {
 
   const sendMessage = useCallback(
     async (input: string) => {
-      if (!sessionId) {
-        console.error("No session ID available");
-        return;
-      }
-
+      // 先显示用户消息，无论是否有session ID
       const userMessage: ConversationMessage = { id: uuid(), role: "user", content: input };
       setMessages((prev) => [...prev, userMessage]);
       setIsLoading(true);
-      
-      try {
-        let currentSessionId = sessionId;
-        if (!currentSessionId || currentSessionId === "offline-mode") {
-          // 尝试创建或重新连接会话
-          console.log("Creating new session or reconnecting...");
-          const newSessionId = await createSession();
-          currentSessionId = newSessionId;
-          
-          // 如果仍然是离线模式，显示模拟响应
-          if (currentSessionId === "offline-mode") {
-            setTimeout(() => {
-              const assistantMessage: ConversationMessage = {
-                id: uuid(),
-                role: "assistant",
-                content: "ChatBot service is not available. This is a simulated response. Please click 'Try to reconnect' above or ensure the ChatBot service is running at http://localhost:8000.",
-              };
-              setMessages((prev) => [...prev, assistantMessage]);
-              setIsLoading(false);
-            }, 1000);
-            return;
-          }
-        }
 
+      // 如果没有session ID，先创建一个
+      let currentSessionId = sessionId;
+      if (!currentSessionId) {
+        console.log("No session ID available, creating one...");
+        currentSessionId = await createSession();
+      }
+
+      // 如果创建失败或处于离线模式
+      if (!currentSessionId || currentSessionId === "offline-mode") {
+        setTimeout(() => {
+          const assistantMessage: ConversationMessage = {
+            id: uuid(),
+            role: "assistant",
+            content: "ChatBot service is not available. This is a simulated response. Please click 'Try to reconnect' above or ensure the ChatBot service is running at http://localhost:8000.",
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+          setIsLoading(false);
+        }, 1000);
+        return;
+      }
+
+      try {
         const response = await fetch(`${CHATBOT_API_BASE}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -220,7 +251,15 @@ export function DocumentWorkbench() {
         }
 
         const data: ChatBotResponse = await response.json();
-        
+
+        // 调试日志
+        console.log("ChatBot Response:", {
+          current_section: data.current_section,
+          section_title: data.section_title,
+          section_complete: data.section_complete,
+          last_completed_section: data.last_completed_section
+        });
+
         const assistantMessage: ConversationMessage = {
           id: uuid(),
           role: "assistant",
@@ -228,9 +267,22 @@ export function DocumentWorkbench() {
           section: data.current_section,
           timestamp: new Date().toISOString()
         };
-        
+
         setMessages((prev) => [...prev, assistantMessage]);
-        setCurrentSection(data.current_section);
+
+        // 正确处理章节进度指示器
+        // 如果有刚完成的章节，暂时显示该章节为激活状态
+        if (data.last_completed_section !== undefined && data.last_completed_section !== null) {
+          // 显示刚完成的章节，给用户一个视觉反馈
+          setCurrentSection(data.last_completed_section);
+          // 然后延迟切换到新章节
+          setTimeout(() => {
+            setCurrentSection(data.current_section);
+          }, 1500); // 1.5秒后切换到新章节
+        } else {
+          setCurrentSection(data.current_section);
+        }
+
         setSectionTitle(data.section_title);
         
         // 更新草稿内容
@@ -269,12 +321,7 @@ export function DocumentWorkbench() {
     [],
   );
 
-  const renderedDraft = useMemo(() => {
-    const escape = (value: string) =>
-      value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    return escape(draft).replace(/\n/g, "<br/>");
-  }, [draft]);
-
+  
   const onSubmit = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -423,7 +470,11 @@ export function DocumentWorkbench() {
                               : "rounded-tl-none bg-muted/70 text-foreground"
                           }`}
                         >
-                          <span className="whitespace-pre-wrap">{message.content}</span>
+                          {isUser ? (
+                            <span className="whitespace-pre-wrap">{message.content}</span>
+                          ) : (
+                            <MarkdownRenderer content={message.content} className="text-sm" />
+                          )}
                         </div>
                       </div>
                     </div>
@@ -480,10 +531,7 @@ export function DocumentWorkbench() {
               </Button>
             </div>
             <ScrollArea className="flex-1 h-[400px] px-6 py-3">
-              <article
-                className="prose prose-sm max-w-none text-foreground dark:prose-invert"
-                dangerouslySetInnerHTML={{ __html: renderedDraft }}
-              />
+              <MarkdownRenderer content={draft} className="prose prose-sm max-w-none text-foreground dark:prose-invert" />
             </ScrollArea>
             <div className="border-t border-border/60 px-6 py-4">
               <div className="space-y-4">
@@ -499,7 +547,7 @@ export function DocumentWorkbench() {
                   className="w-full rounded-lg"
                   onClick={handleExportPDF}
                 >
-                  Export PDF
+                  Export DOC
                 </Button>
               </div>
             </div>

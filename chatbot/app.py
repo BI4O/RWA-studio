@@ -34,6 +34,7 @@ class ChatResponse(BaseModel):
     section_complete: bool = Field(..., description="当前章节是否完成")
     conversation_history: List[Dict[str, Any]] = Field(..., description="对话历史")
     document_state: Dict[str, Any] = Field(..., description="文档状态")
+    last_completed_section: Optional[int] = Field(None, description="刚完成的章节索引")
 
 class SessionCreate(BaseModel):
     """创建会话模型"""
@@ -296,8 +297,13 @@ async def chat(message: ChatMessage):
             state["interaction_mode"] = "confirm"
             # 模拟确认操作
             if state["current_section"] < len(SECTION_TITLES):
+                # 先标记当前章节完成，然后递增
+                completed_section = state["current_section"]
                 state["current_section"] += 1
-                state["section_complete"] = True
+                # 为新章节重置完成状态
+                state["section_complete"] = False
+                # 在响应中包含刚完成的章节信息
+                state["last_completed_section"] = completed_section
         elif "总结" in tool_output or "summarize" in tool_output:
             state["interaction_mode"] = "ask"
         else:
@@ -323,7 +329,8 @@ async def chat(message: ChatMessage):
             section_title=section_title,
             section_complete=state["section_complete"],
             conversation_history=state["conversation_history"][-10:],  # 返回最近10条
-            document_state={k: v for k, v in state.items() if k != "conversation_history"}
+            document_state={k: v for k, v in state.items() if k != "conversation_history"},
+            last_completed_section=state.get("last_completed_section")
         )
 
     except Exception as e:
