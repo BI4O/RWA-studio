@@ -472,12 +472,12 @@ export function DocumentWorkbench() {
               {uploadedFiles.length ? (
                 uploadedFiles.map((file) => (
                   <div key={file.name} className="rounded-xl border border-border/60 bg-background px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary flex-shrink-0">
                         <Paperclip className="h-4 w-4" />
                       </span>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-foreground">{file.name}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground break-words">{file.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {(file.size / 1024).toFixed(1)} KB - {file.type || "Unlabelled"}
                         </p>

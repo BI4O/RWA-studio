@@ -4,13 +4,16 @@ import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, TrendingUp, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
+import { Search, TrendingUp, Users, FileText, Shield, Eye } from "lucide-react";
 
 // Mock contract data with more transactions
 const MOCK_CONTRACTS = [
   {
     id: "contract-a",
-    name: "ContractA",
+    name: "Solar Power Plant",
     network: "Ethereum Mainnet",
     address: "0x1234567890123456789012345678901234567890",
     tokenSupply: "1,000,000",
@@ -34,7 +37,7 @@ const MOCK_CONTRACTS = [
   },
   {
     id: "contract-b",
-    name: "ContractB", 
+    name: "Cloud Computing Farm", 
     network: "Polygon Mainnet",
     address: "0x2345678901234567890123456789012345678901",
     tokenSupply: "500,000",
@@ -57,7 +60,7 @@ const MOCK_CONTRACTS = [
   },
   {
     id: "contract-c",
-    name: "ContractC",
+    name: "Wind Turbine Farm",
     network: "BSC Mainnet", 
     address: "0x3456789012345678901234567890123456789012",
     tokenSupply: "2,000,000",
@@ -81,7 +84,7 @@ const MOCK_CONTRACTS = [
   },
   {
     id: "contract-d",
-    name: "ContractD",
+    name: "Battery Storage",
     network: "Arbitrum One",
     address: "0x4567890123456789012345678901234567890123",
     tokenSupply: "750,000",
@@ -104,7 +107,7 @@ const MOCK_CONTRACTS = [
   },
   {
     id: "contract-e",
-    name: "ContractE",
+    name: "Hydroelectric Dam",
     network: "Avalanche C-Chain",
     address: "0x5678901234567890123456789012345678901234",
     tokenSupply: "1,250,000",
@@ -128,7 +131,7 @@ const MOCK_CONTRACTS = [
   },
   {
     id: "contract-f",
-    name: "ContractF",
+    name: "Data Center Network",
     network: "Optimism",
     address: "0x6789012345678901234567890123456789012345",
     tokenSupply: "300,000",
@@ -151,7 +154,7 @@ const MOCK_CONTRACTS = [
   },
   {
     id: "contract-g",
-    name: "ContractG",
+    name: "Geothermal Plant",
     network: "Base",
     address: "0x7890123456789012345678901234567890123456",
     tokenSupply: "850,000",
@@ -175,7 +178,7 @@ const MOCK_CONTRACTS = [
   },
   {
     id: "contract-h",
-    name: "ContractH",
+    name: "AI Computing Cluster",
     network: "Polygon zkEVM",
     address: "0x8901234567890123456789012345678901234567",
     tokenSupply: "1,500,000",
@@ -202,8 +205,38 @@ const MOCK_CONTRACTS = [
 export function DashboardOverview() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedContract, setSelectedContract] = useState(MOCK_CONTRACTS[0]);
+  const [activeReportTab, setActiveReportTab] = useState<"monthly" | "sar">("monthly");
+  const [reportedItems, setReportedItems] = useState<Set<string>>(new Set());
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewContent, setPreviewContent] = useState("");
+  const [previewTitle, setPreviewTitle] = useState("");
   const lineChartRef = useRef<HTMLDivElement>(null);
   const doughnutChartRef = useRef<HTMLDivElement>(null);
+
+  const handleReport = (reportId: string, targetType: "exchange" | "regulatory") => {
+    setReportedItems(prev => {
+      const newSet = new Set(prev);
+      newSet.add(reportId);
+      return newSet;
+    });
+    setReportDialogOpen(false); // Auto close dialog after selection
+  };
+
+  const handlePreview = async (type: "monthly" | "sar", contractName: string) => {
+    try {
+      const filePath = type === "monthly" ? "/markdowns/Monthly.md" : "/markdowns/SAR.md";
+      const response = await fetch(filePath);
+      if (response.ok) {
+        const content = await response.text();
+        setPreviewContent(content);
+        setPreviewTitle(`${contractName} ${type === "monthly" ? "Monthly Report" : "SAR"} Preview`);
+        setPreviewDialogOpen(true);
+      }
+    } catch (error) {
+      console.error("Failed to load preview content:", error);
+    }
+  };
 
   const filteredContracts = MOCK_CONTRACTS.filter(contract => {
     return contract.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -328,7 +361,7 @@ export function DashboardOverview() {
 
   return (
     <section className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-[0.4fr_0.6fr]">
+      <div className="grid gap-6 lg:grid-cols-[0.3fr_0.7fr]">
         {/* Left side - Contract tabs */}
         <Card className="border-muted-foreground/20">
           <CardHeader>
@@ -391,7 +424,226 @@ export function DashboardOverview() {
               </div>
               <div className="rounded-lg border bg-card p-3">
                 <div className="text-2xl font-bold">{selectedContract.pendingAlerts}</div>
-                <div className="text-sm text-muted-foreground">Pending Alerts</div>
+                <div className="text-sm text-muted-foreground">Risk Tx</div>
+              </div>
+            </div>
+
+            {/* Reports section */}
+            <div>
+              <h3 className="mb-4 text-lg font-medium">Reports</h3>
+              <div className="mb-4 border-b">
+                <nav className="flex space-x-8">
+                  <button
+                    onClick={() => setActiveReportTab("monthly")}
+                    className={`pb-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      activeReportTab === "monthly"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <FileText className="inline h-4 w-4 mr-2" />
+                    Monthly Report
+                  </button>
+                  <button
+                    onClick={() => setActiveReportTab("sar")}
+                    className={`pb-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      activeReportTab === "sar"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Shield className="inline h-4 w-4 mr-2" />
+                    Suspicious Activity Report
+                  </button>
+                </nav>
+              </div>
+
+              {/* Report content */}
+              <div className="overflow-hidden rounded-lg border">
+                <div className="max-h-96 overflow-y-auto">
+                  {activeReportTab === "monthly" && (
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-background text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3 font-medium">Project Name</th>
+                          <th className="px-4 py-3 font-medium">Report Type</th>
+                          <th className="px-4 py-3 font-medium">Date</th>
+                          <th className="px-4 py-3 font-medium text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-t">
+                          <td className="px-4 py-3 font-medium">{selectedContract.name} Sep Report</td>
+                          <td className="px-4 py-3 text-muted-foreground">Monthly</td>
+                          <td className="px-4 py-3 text-muted-foreground">Sep 1, 2025</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePreview("monthly", selectedContract.name)}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                Preview
+                              </Button>
+                              <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    disabled={reportedItems.has(`${selectedContract.id}-monthly-sep`)}
+                                  >
+                                    {reportedItems.has(`${selectedContract.id}-monthly-sep`) ? "Reported" : "Report"}
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Report to Authority</DialogTitle>
+                                    <DialogDescription>
+                                      Choose where you want to submit this report
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="flex gap-4 mt-4">
+                                    <Button
+                                      onClick={() => handleReport(`${selectedContract.id}-monthly-sep`, "exchange")}
+                                      className="flex-1"
+                                    >
+                                      Exchange
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleReport(`${selectedContract.id}-monthly-sep`, "regulatory")}
+                                      className="flex-1"
+                                      variant="outline"
+                                    >
+                                      Regulatory Agency
+                                    </Button>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  )}
+
+                  {activeReportTab === "sar" && (
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-background text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3 font-medium">Project Name</th>
+                          <th className="px-4 py-3 font-medium">Risk Type</th>
+                          <th className="px-4 py-3 font-medium">Date</th>
+                          <th className="px-4 py-3 font-medium text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-t">
+                          <td className="px-4 py-3 font-medium">{selectedContract.name} SAR</td>
+                          <td className="px-4 py-3 text-muted-foreground">Mixer</td>
+                          <td className="px-4 py-3 text-muted-foreground">Sep 1, 2025</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePreview("sar", selectedContract.name)}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                Preview
+                              </Button>
+                              <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    disabled={reportedItems.has(`${selectedContract.id}-sar-mixer`)}
+                                  >
+                                    {reportedItems.has(`${selectedContract.id}-sar-mixer`) ? "Reported" : "Report"}
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Report to Authority</DialogTitle>
+                                    <DialogDescription>
+                                      Choose where you want to submit this report
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="flex gap-4 mt-4">
+                                    <Button
+                                      onClick={() => handleReport(`${selectedContract.id}-sar-mixer`, "exchange")}
+                                      className="flex-1"
+                                    >
+                                      Exchange
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleReport(`${selectedContract.id}-sar-mixer`, "regulatory")}
+                                      className="flex-1"
+                                      variant="outline"
+                                    >
+                                      Regulatory Agency
+                                    </Button>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </td>
+                        </tr>
+                        <tr className="border-t">
+                          <td className="px-4 py-3 font-medium">{selectedContract.name} SAR</td>
+                          <td className="px-4 py-3 text-muted-foreground">Hacker</td>
+                          <td className="px-4 py-3 text-muted-foreground">Sep 1, 2025</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePreview("sar", selectedContract.name)}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                Preview
+                              </Button>
+                              <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    disabled={reportedItems.has(`${selectedContract.id}-sar-hacker`)}
+                                  >
+                                    {reportedItems.has(`${selectedContract.id}-sar-hacker`) ? "Reported" : "Report"}
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Report to Authority</DialogTitle>
+                                    <DialogDescription>
+                                      Choose where you want to submit this report
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="flex gap-4 mt-4">
+                                    <Button
+                                      onClick={() => handleReport(`${selectedContract.id}-sar-hacker`, "exchange")}
+                                      className="flex-1"
+                                    >
+                                      Exchange
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleReport(`${selectedContract.id}-sar-hacker`, "regulatory")}
+                                      className="flex-1"
+                                      variant="outline"
+                                    >
+                                      Regulatory Agency
+                                    </Button>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -464,6 +716,21 @@ export function DashboardOverview() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Preview Dialog */}
+            <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{previewTitle}</DialogTitle>
+                  <DialogDescription>
+                    Preview of the report content
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="mt-4">
+                  <MarkdownRenderer content={previewContent} />
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
       </div>
