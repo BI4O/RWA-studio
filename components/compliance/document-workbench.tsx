@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Steps } from "@/components/ui/steps";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
-import { FileUp, Loader2, MessageCircle, Paperclip, Send, Bot, User } from "lucide-react";
+import { FileUp, Loader2, MessageCircle, Paperclip, Send, Bot, User, RotateCcw } from "lucide-react";
 import { v4 as uuid } from "uuid";
 
 // ChatBot API 配置
@@ -53,6 +53,7 @@ type ConversationMessage = ChatBotMessage & { id: string };
 
 export function DocumentWorkbench() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([
     {
       id: uuid(),
@@ -123,13 +124,62 @@ export function DocumentWorkbench() {
     setMounted(true);
   }, []);
 
-  // 初始化时只在需要时创建会话，不在useEffect中自动创建
+  // localStorage持久化功能
   useEffect(() => {
     if (mounted) {
-      // 不自动创建会话，只在用户首次发送消息时创建
-      console.log("Component mounted, will create session when needed");
+      // 尝试从localStorage恢复对话历史
+      try {
+        const savedData = localStorage.getItem('rwa-compliance-chat');
+        if (savedData) {
+          const parsed = JSON.parse(savedData);
+          if (parsed.messages && parsed.messages.length > 0) {
+            setMessages(parsed.messages);
+            setCurrentSection(parsed.currentSection || 0);
+            setSectionTitle(parsed.sectionTitle || "Executive Summary");
+            setDraft(parsed.draft || "Waiting to start generating RWA Token Listing Memo...");
+            setSessionId(parsed.sessionId || null);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to restore chat from localStorage:', error);
+      }
     }
   }, [mounted]);
+
+  // 保存到localStorage的函数
+  const saveToLocalStorage = useCallback((messages: ConversationMessage[], currentSection: number, sectionTitle: string, draft: string, sessionId: string | null) => {
+    try {
+      const dataToSave = {
+        messages,
+        currentSection,
+        sectionTitle,
+        draft,
+        sessionId,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('rwa-compliance-chat', JSON.stringify(dataToSave));
+    } catch (error) {
+      console.error('Failed to save chat to localStorage:', error);
+    }
+  }, []);
+
+  // New Chat功能
+  const handleNewChat = useCallback(() => {
+    // 清空localStorage
+    localStorage.removeItem('rwa-compliance-chat');
+
+    // 重置所有状态
+    setMessages([{
+      id: uuid(),
+      role: "assistant",
+      content: "Welcome to the RWA Token Listing Memo Assistant! I will help you complete 12 sections of compliance documentation. Please tell me your token basic information, or say 'start generation' to let me guide you through the entire process.",
+    }]);
+    setDraft("Waiting to start generating RWA Token Listing Memo...");
+    setCurrentSection(0);
+    setSectionTitle("Executive Summary");
+    setSessionId(null);
+    setUploadedFiles([]);
+  }, []);
 
   // 创建ChatBot会话
   const createSession = useCallback(async (retryCount = 0) => {
@@ -199,6 +249,21 @@ export function DocumentWorkbench() {
   //     createSession();
   //   }
   // }, [mounted, sessionId, createSession]);
+
+  // 自动滚动到底部功能
+  const scrollToBottom = useCallback(() => {
+    if (scrollAreaRef.current) {
+      const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollElement) {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
+    }
+  }, []);
+
+  // 监听消息变化，自动滚动到底部
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading, scrollToBottom]);
 
   const buildDraft = useCallback(() => {
     return "# Compliance summary\n\n_Auto-generated via AI co-pilot._";
@@ -284,10 +349,19 @@ export function DocumentWorkbench() {
         }
 
         setSectionTitle(data.section_title);
-        
+
         // 更新草稿内容
         const newDraft = `# ${data.section_title}\n\n${data.message}\n\n---\n\n**Current Section**: ${data.current_section + 1}/12\n**Status**: ${data.section_complete ? 'Completed' : 'In Progress'}`;
         setDraft(newDraft);
+
+        // 保存到localStorage
+        saveToLocalStorage(
+          [...messages, userMessage, assistantMessage],
+          data.current_section,
+          data.section_title,
+          newDraft,
+          currentSessionId
+        );
         
       } catch (error) {
         console.error("ChatBot error:", error);
@@ -322,6 +396,22 @@ export function DocumentWorkbench() {
   );
 
   
+  // Enter键触发发送功能
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault(); // 阻止默认换行
+        const textarea = event.currentTarget;
+        const message = textarea.value.trim();
+        if (message && !isLoading) {
+          void sendMessage(message);
+          textarea.value = ''; // 清空输入框
+        }
+      }
+    },
+    [sendMessage, isLoading],
+  );
+
   const onSubmit = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -414,21 +504,18 @@ export function DocumentWorkbench() {
                 Section {currentSection + 1}/12
               </Badge>
             </div>
-            <div className="mt-3 rounded-xl border border-border/60 bg-muted/40 p-3">
-              <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <MessageCircle className="h-4 w-4" />
-                AI Summary
-              </p>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{summaryBlurb}</p>
+            <div className="mt-3 flex justify-between items-center">
+              <Button variant="outline" size="sm" onClick={handleNewChat}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                New Chat
+              </Button>
               {sessionId === "offline-mode" && (
-                <div className="mt-3 pt-3 border-t border-border/30">
-                  <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
-                    <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
-                    ChatBot service offline
-                  </div>
+                <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+                  <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
+                  ChatBot service offline
                   <button
                     onClick={reconnectToChatBot}
-                    className="mt-2 text-xs text-primary hover:text-primary/80 underline"
+                    className="ml-2 text-xs text-primary hover:text-primary/80 underline"
                   >
                     Try to reconnect
                   </button>
@@ -437,7 +524,7 @@ export function DocumentWorkbench() {
             </div>
           </div>
           <div className="flex flex-1 flex-col min-h-0">
-            <ScrollArea className="flex-1 h-[500px]">
+            <ScrollArea ref={scrollAreaRef} className="flex-1 h-[500px]">
               <div className="space-y-4 px-6 py-4">
                 {messages.map((message) => {
                   const isUser = message.role === "user";
@@ -505,8 +592,9 @@ export function DocumentWorkbench() {
                   placeholder="Enter your requirements, e.g.: 'I want to create a token called CCT', or say 'you decide' to let the assistant auto-fill..."
                   disabled={isLoading}
                   className="min-h-[72px] flex-1 rounded-xl border-border bg-background"
+                  onKeyDown={handleKeyDown}
                 />
-                <Button type="submit" disabled={isLoading} className="h-11 min-w-[140px] rounded-xl">
+                <Button type="submit" disabled={isLoading} className="h-auto min-w-[140px] self-stretch rounded-xl">
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
