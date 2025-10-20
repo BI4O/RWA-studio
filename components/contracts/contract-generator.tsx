@@ -327,16 +327,18 @@ export function ContractGenerator() {
   const [initialSupply, setInitialSupply] = useState(1_000_000);
   const [decimals, setDecimals] = useState(18);
   const [ownerAddress, setOwnerAddress] = useState("0x1F0fb44Ae473FC4D986d61a3bFb9e4e5A9EBA828");
-  const [riskAssessmentAddress, setRiskAssessmentAddress] = useState("0x1234567890123456789012345678901234567890");
+  const [riskAssessmentAddress, setRiskAssessmentAddress] = useState("0x6bf75A484710E1bF3bC4152752c71DDF987a1b2B");
   const [enableRiskAssessment, setEnableRiskAssessment] = useState(true);
   const [enableWhitelist, setEnableWhitelist] = useState(false);
-  const [defaultWhitelisted, setDefaultWhitelisted] = useState("");
+  const [defaultWhitelisted, setDefaultWhitelisted] = useState("0x1F0fb44Ae473FC4D986d61a3bFb9e4e5A9EBA828");
   const [selectedChain, setSelectedChain] = useState<number>(CHAINS[0]?.id ?? sepolia.id);
   const [selectedRiskProvider, setSelectedRiskProvider] = useState(RISK_PROVIDERS[0]?.id ?? "chainalysis");
   const [copiedCode, setCopiedCode] = useState(false);
   const [status, setStatus] = useState<DeploymentStatus>("idle");
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
-  const [deploymentSuccessOpen, setDeploymentSuccessOpen] = useState(false);
+  const [contractAddress, setContractAddress] = useState<string | null>(null);
+  const [deploymentOutput, setDeploymentOutput] = useState<string>("");
+  const [deploymentOutputOpen, setDeploymentOutputOpen] = useState(false);
   const [highlightedSections, setHighlightedSections] = useState<string[]>([]);
   const [flashSection, setFlashSection] = useState<string | null>(null);
   const codeContainerRef = useRef<HTMLDivElement>(null);
@@ -411,7 +413,7 @@ export function ContractGenerator() {
       setRiskAssessmentAddress("0x0000000000000000000000000000000000000000");
     } else {
       setEnableRiskAssessment(true);
-      setRiskAssessmentAddress("0x1234567890123456789012345678901234567890");
+      setRiskAssessmentAddress("0x6bf75A484710E1bF3bC4152752c71DDF987a1b2B");
     }
   }, [selectedRiskProvider]);
 
@@ -461,49 +463,92 @@ export function ContractGenerator() {
   const deployContract = useCallback(async () => {
     try {
       setStatus("preparing");
+      setDeploymentOutput(""); // Clear previous output
+      setDeploymentOutputOpen(true); // Open the output dialog
 
-      // TODO: This is where actual deployment logic will be implemented
-      // When you provide the account, we'll add the real deployment logic here
-      console.log("Deploying uRWA contract with hardcoded parameters:", {
+      // Prepare deployment parameters
+      const deploymentParams = {
         tokenName,
         symbol,
-        initialSupply,
-        decimals,
         ownerAddress: address ?? ownerAddress,
         riskAssessmentAddress,
-        enableRiskAssessment,
-        enableWhitelist,
-        defaultWhitelisted: defaultWhitelisted.split(",").map(addr => addr.trim()).filter(addr => addr.length > 0),
-        selectedChain,
-        selectedRiskProvider,
-        deploymentType: "parameterless-constructor"
-      });
+        chain: selectedChain
+      };
+
+      console.log("Deploying uRWA contract with parameters:", deploymentParams);
 
       setStatus("submitting");
 
-      // Simulate deployment process
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Call the deployment API with Server-Sent Events
+      const response = await fetch('/api/contract/deploy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(deploymentParams),
+      });
 
-      setStatus("success");
-      setTransactionHash("0x1234567890abcdef1234567890abcdef12345678");
-      setDeploymentSuccessOpen(true);
-    } catch (error) {
+      if (!response.body) {
+        throw new Error("Response body is null");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      let fullOutput = "";
+      let transactionHash: string | undefined = undefined;
+      let contractAddress: string | undefined = undefined;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.type === 'output' || data.type === 'error') {
+                fullOutput += data.output;
+                setDeploymentOutput(prev => prev + data.output);
+              } else if (data.type === 'success') {
+                transactionHash = data.transactionHash;
+                contractAddress = data.contractAddress;
+                fullOutput = data.output;
+                setDeploymentOutput(data.output);
+              }
+            } catch (e) {
+              // 如果不是JSON格式，直接添加到输出
+              setDeploymentOutput(prev => prev + line + '\n');
+            }
+          }
+        }
+      }
+
+      // Deployment completed
+      if (transactionHash && contractAddress) {
+        setStatus("success");
+        setTransactionHash(transactionHash);
+        setContractAddress(contractAddress);
+      } else {
+        setStatus("error");
+        setDeploymentOutput(prev => prev + "\nDeployment failed or incomplete.");
+      }
+    } catch (error: any) {
       console.error("Deployment failed:", error);
       setStatus("error");
+      setDeploymentOutput(prev => prev + `\nDeployment failed: ${error.message || "Unknown error"}`);
     }
   }, [
     tokenName,
     symbol,
-    initialSupply,
-    decimals,
     address,
     ownerAddress,
     riskAssessmentAddress,
-    enableRiskAssessment,
-    enableWhitelist,
-    defaultWhitelisted,
-    selectedChain,
-    selectedRiskProvider
+    selectedChain
   ]);
 
   // Don't render until mounted to prevent hydration mismatch
@@ -749,73 +794,113 @@ export function ContractGenerator() {
           </div>
         </section>
 
-        {/* Deployment Success Dialog */}
-        <Dialog open={deploymentSuccessOpen} onOpenChange={setDeploymentSuccessOpen}>
-          <DialogContent className="sm:max-w-md">
+        {/* Deployment Output Dialog */}
+        <Dialog open={deploymentOutputOpen} onOpenChange={setDeploymentOutputOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between">
               <DialogHeader className="flex-1">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-                    <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div>
-                    <DialogTitle className="text-lg font-semibold text-foreground">
-                      Contract Deployed Successfully!
-                    </DialogTitle>
-                    <DialogDescription className="text-sm text-muted-foreground">
-                      Your uRWA contract has been deployed to the blockchain.
-                    </DialogDescription>
-                  </div>
-                </div>
+                <DialogTitle className="text-lg font-semibold text-foreground">
+                  {status === "success" ? "Contract Deployed Successfully!" : "Contract Deployment in Progress"}
+                </DialogTitle>
+                <DialogDescription className="text-sm text-muted-foreground">
+                  {status === "success"
+                    ? "Your uRWA contract has been deployed to the blockchain."
+                    : "Please wait while your contract is being deployed..."}
+                </DialogDescription>
               </DialogHeader>
               <button
-                onClick={() => setDeploymentSuccessOpen(false)}
+                onClick={() => setDeploymentOutputOpen(false)}
                 className="rounded-full p-2 hover:bg-muted transition-colors"
+                disabled={status === "submitting"}
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="mt-6 space-y-4">
-              <div className="rounded-lg border bg-muted/50 p-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">Transaction Hash</span>
-                    <span className="text-xs text-muted-foreground">Sepolia Testnet</span>
-                  </div>
-                  <div className="font-mono text-xs text-foreground break-all">
-                    {transactionHash}
-                  </div>
+            <div className="mt-4 flex-1 overflow-hidden flex flex-col">
+              <div className="rounded-lg border bg-muted/50 p-4 flex-1 overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {status === "success" ? "Deployment Results" : "Deployment Output"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {status === "submitting" ? "Deploying..." : status === "success" ? "Success" : status === "error" ? "Failed" : "Preparing..."}
+                  </span>
                 </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    // Open blockchain explorer
-                    const explorerUrl = `https://sepolia.etherscan.io/tx/${transactionHash}`;
-                    window.open(explorerUrl, '_blank');
-                  }}
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  View on Explorer
-                </Button>
-                <Button
-                  onClick={() => setDeploymentSuccessOpen(false)}
-                  className="flex-1"
-                >
-                  Continue
-                </Button>
-              </div>
-
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">
-                  Contract address will be available once the transaction is confirmed.
-                </p>
+                <ScrollArea className="flex-1 font-mono text-xs text-foreground break-all max-h-96">
+                  <pre className="whitespace-pre-wrap p-2">{deploymentOutput || "Waiting for deployment to start..."}</pre>
+                </ScrollArea>
               </div>
             </div>
+
+            {/* 显示部署成功后的结果信息 */}
+            {status === "success" && (
+              <div className="mt-4 space-y-4">
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Transaction Hash</span>
+                      <span className="text-xs text-muted-foreground">Sepolia Testnet</span>
+                    </div>
+                    <div className="font-mono text-xs text-foreground break-all">
+                      {transactionHash}
+                    </div>
+                  </div>
+                </div>
+
+                {contractAddress && (
+                  <div className="rounded-lg border bg-muted/50 p-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-muted-foreground">Contract Address</span>
+                        <span className="text-xs text-muted-foreground">Sepolia Testnet</span>
+                      </div>
+                      <div className="font-mono text-xs text-foreground break-all">
+                        {contractAddress}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      // Open blockchain explorer
+                      const explorerUrl = `https://sepolia.etherscan.io/tx/${transactionHash}`;
+                      window.open(explorerUrl, '_blank');
+                    }}
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    View on Explorer
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      // 关闭对话框并重置状态以允许重新部署
+                      setDeploymentOutputOpen(false);
+                      setStatus("idle");
+                    }}
+                    className="flex-1"
+                  >
+                    Deploy Another
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* 只在成功状态显示部署另一个按钮，其他状态显示关闭按钮 */}
+            {status === "success" ? null : (
+              <div className="mt-4 flex justify-end">
+                <Button
+                  onClick={() => setDeploymentOutputOpen(false)}
+                  disabled={status === "submitting"}
+                  className="flex-1"
+                >
+                  {status === "submitting" ? "Deploying..." : "Close"}
+                </Button>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>
