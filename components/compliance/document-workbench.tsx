@@ -11,6 +11,7 @@ import { Steps } from "@/components/ui/steps";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { FileUp, Loader2, MessageCircle, Paperclip, Send, Bot, User, RotateCcw } from "lucide-react";
 import { v4 as uuid } from "uuid";
+import { JurisdictionSelector } from "@/components/compliance/jurisdiction-selector";
 
 // ChatBot API 配置
 const CHATBOT_API_BASE = "http://localhost:8000";
@@ -69,15 +70,16 @@ export function DocumentWorkbench() {
   const [currentSection, setCurrentSection] = useState(0);
   const [sectionTitle, setSectionTitle] = useState("Executive Summary");
   const [mounted, setMounted] = useState(false);
+  const [selectedJurisdiction, setSelectedJurisdiction] = useState<string | null>(null);
 
   // DOC export function
   const handleExportPDF = useCallback(async () => {
     try {
-      // 读取项目根目录下的 CloudComputer_RWA_Listing_Memo.md 文件
-      const response = await fetch('/CloudComputer_RWA_Listing_Memo.md');
+      // 下载 public 目录下的 CloudComputer Real World AssetToken Listing Memo.docx 文件
+      const response = await fetch('/CloudComputer%20Real%20World%20AssetToken%20Listing%20Memo.docx');
 
       if (!response.ok) {
-        // 如果文件不存在，使用当前的 draft 内容作为fallback
+        // 如果文件不存在，使用当前的 draft 内容作为fallback，保存为 .md 文件
         const blob = new Blob([draft], { type: 'text/markdown' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -90,15 +92,14 @@ export function DocumentWorkbench() {
         return;
       }
 
-      // 读取文件内容
-      const content = await response.text();
+      // 读取文件内容 (作为二进制数据)
+      const blob = await response.blob();
 
       // 创建下载
-      const blob = new Blob([content], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'CloudComputer_RWA_Listing_Memo.md';
+      a.download = 'CloudComputer Real World AssetToken Listing Memo.docx';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -106,7 +107,7 @@ export function DocumentWorkbench() {
 
     } catch (error) {
       console.error('Export failed:', error);
-      // 如果出错，使用当前的 draft 内容作为fallback
+      // 如果出错，使用当前的 draft 内容作为fallback，保存为 .md 文件
       const blob = new Blob([draft], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -464,9 +465,6 @@ export function DocumentWorkbench() {
           <Card className="shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Uploaded evidence</CardTitle>
-              <CardDescription>
-                Audited artifacts and counsel notes synchronized from the data room.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {uploadedFiles.length ? (
@@ -492,6 +490,10 @@ export function DocumentWorkbench() {
               )}
             </CardContent>
           </Card>
+          <JurisdictionSelector
+            selectedJurisdiction={selectedJurisdiction}
+            onJurisdictionChange={setSelectedJurisdiction}
+          />
         </aside>
         <section className="order-1 flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/80 shadow-xl xl:order-2 xl:col-span-5 h-[800px]">
           <div className="border-b border-border/60 bg-card/60 px-6 py-4">

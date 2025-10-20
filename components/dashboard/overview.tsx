@@ -211,6 +211,7 @@ export function DashboardOverview() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewContent, setPreviewContent] = useState("");
   const [previewTitle, setPreviewTitle] = useState("");
+  const [activeChart, setActiveChart] = useState<string | null>(null); // Track which chart is active
   const lineChartRef = useRef<HTMLDivElement>(null);
   const doughnutChartRef = useRef<HTMLDivElement>(null);
 
@@ -247,11 +248,39 @@ export function DashboardOverview() {
   const LineChart = () => {
     const data = [32000, 42000, 38000, 51000, 45000, 48000, 52000];
     const maxValue = Math.max(...data);
+    const labels = ['Jan 9', 'Jan 10', 'Jan 11', 'Jan 12', 'Jan 13', 'Jan 14', 'Jan 15'];
+    const chartWidth = 280;
+    const chartHeight = 120;
+    const chartPadding = { top: 20, right: 10, bottom: 20, left: 10 };
+    const startX = chartPadding.left;
+    const startY = chartPadding.top + chartHeight;
+
+    // Calculate points for line chart
     const points = data.map((value, index) => {
-      const x = (index / (data.length - 1)) * 280; // 280px width
-      const y = 140 - (value / maxValue) * 120; // 140px height, inverted
-      return `${x},${y}`;
-    }).join(' ');
+      const x = startX + (index / (data.length - 1)) * chartWidth;
+      const y = startY - (value / maxValue) * chartHeight;
+      return { x, y, value, label: labels[index] };
+    });
+
+    const pointsString = points.map(p => `${p.x},${p.y}`).join(' ');
+
+    // State for hover interaction
+    const [hoveredPoint, setHoveredPoint] = useState<number | null>(null);
+
+    // Handle mouse enter with active chart management
+    const handleMouseEnter = (index: number) => {
+      setActiveChart("line");
+      setHoveredPoint(index);
+    };
+
+    // Handle mouse leave with active chart management
+    const handleMouseLeave = () => {
+      setHoveredPoint(null);
+      // Only reset activeChart if it's currently the line chart
+      if (activeChart === "line") {
+        setActiveChart(null);
+      }
+    };
 
     return (
       <div className="h-48 w-full relative">
@@ -261,32 +290,107 @@ export function DashboardOverview() {
               <stop offset="0%" stopColor="rgba(59, 130, 246, 0.3)" />
               <stop offset="100%" stopColor="rgba(59, 130, 246, 0.0)" />
             </linearGradient>
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
           </defs>
-          
+
           {/* Grid lines */}
           {[0, 1, 2, 3, 4].map(i => (
-            <line key={i} x1="10" y1={20 + i * 30} x2="290" y2={20 + i * 30} 
-                  stroke="#f3f4f6" strokeWidth="1" />
+            <line
+              key={i}
+              x1={chartPadding.left}
+              y1={chartPadding.top + i * 30}
+              x2={startX + chartWidth}
+              y2={chartPadding.top + i * 30}
+              stroke="#f3f4f6"
+              strokeWidth="1"
+            />
           ))}
-          
+
           {/* Area fill */}
-          <polygon points={`10,140 ${points} 290,140`} fill="url(#areaGradient)" />
-          
+          <polygon
+            points={`${startX},${startY} ${pointsString} ${startX + chartWidth},${startY}`}
+            fill="url(#areaGradient)"
+          />
+
           {/* Line */}
-          <polyline points={points} fill="none" stroke="#3b82f6" strokeWidth="2" />
-          
-          {/* Data points */}
-          {data.map((value, index) => {
-            const x = (index / (data.length - 1)) * 280 + 10;
-            const y = 140 - (value / maxValue) * 120 + 20;
-            return <circle key={index} cx={x} cy={y} r="3" fill="#3b82f6" />;
-          })}
+          <polyline
+            points={pointsString}
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Data points with hover effect */}
+          {points.map((point, index) => (
+            <g key={index}>
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r={hoveredPoint === index ? "6" : "3"}
+                fill="#3b82f6"
+                stroke="#fff"
+                strokeWidth="2"
+                className="cursor-pointer transition-all duration-200"
+                onMouseEnter={() => handleMouseEnter(index)}
+                onMouseLeave={handleMouseLeave}
+                filter={hoveredPoint === index && activeChart === "line" ? "url(#glow)" : ""}
+              />
+
+              {/* Tooltip - only show if this chart is active */}
+              {hoveredPoint === index && activeChart === "line" && (
+                <g>
+                  <rect
+                    x={point.x - 40}
+                    y={point.y - 35}
+                    width="80"
+                    height="25"
+                    fill="#1f2937"
+                    rx="4"
+                    stroke="#374151"
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={point.x}
+                    y={point.y - 18}
+                    textAnchor="middle"
+                    fill="white"
+                    fontSize="11"
+                    fontWeight="500"
+                  >
+                    ${point.value.toLocaleString()}
+                  </text>
+                  <text
+                    x={point.x}
+                    y={point.y - 5}
+                    textAnchor="middle"
+                    fill="#9ca3af"
+                    fontSize="9"
+                  >
+                    {point.label}
+                  </text>
+                </g>
+              )}
+            </g>
+          ))}
         </svg>
-        
+
         {/* X-axis labels */}
         <div className="absolute bottom-2 left-0 right-0 flex justify-between px-3 text-xs text-muted-foreground">
-          {['Jan 9', 'Jan 10', 'Jan 11', 'Jan 12', 'Jan 13', 'Jan 14', 'Jan 15'].map((label, i) => (
-            <span key={i}>{label}</span>
+          {labels.map((label, i) => (
+            <span
+              key={i}
+              className={`transition-colors duration-200 ${hoveredPoint === i && activeChart === "line" ? 'text-primary font-medium' : ''}`}
+            >
+              {label}
+            </span>
           ))}
         </div>
       </div>
@@ -300,58 +404,167 @@ export function DashboardOverview() {
       { name: 'Treasury', value: 20, color: '#f59e0b' },
       { name: 'Locked', value: 10, color: '#ef4444' }
     ];
-    
-    let currentAngle = 0;
-    const radius = 60;
-    const innerRadius = 30;
+
+    const radius = 50; // Reduced radius to make more room
+    const innerRadius = 25; // Reduced inner radius proportionally
     const centerX = 100;
-    const centerY = 80;
+    const centerY = 50; // Moved center up to make room for legend
+
+    // State for hover interaction
+    const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
+
+    // Handle mouse enter with active chart management
+    const handleMouseEnter = (index: number) => {
+      setActiveChart("doughnut");
+      setHoveredSegment(index);
+    };
+
+    // Handle mouse leave with active chart management
+    const handleMouseLeave = () => {
+      setHoveredSegment(null);
+      // Only reset activeChart if it's currently the doughnut chart
+      if (activeChart === "doughnut") {
+        setActiveChart(null);
+      }
+    };
+
+    // Calculate paths for each segment
+    const segments = data.map((item, index) => {
+      const startAngle = data.slice(0, index).reduce((sum, prev) => sum + (prev.value / 100) * 360, -90);
+      const angle = (item.value / 100) * 360;
+      const endAngle = startAngle + angle;
+
+      const startAngleRad = (startAngle * Math.PI) / 180;
+      const endAngleRad = (endAngle * Math.PI) / 180;
+
+      const x1 = centerX + radius * Math.cos(startAngleRad);
+      const y1 = centerY + radius * Math.sin(startAngleRad);
+      const x2 = centerX + radius * Math.cos(endAngleRad);
+      const y2 = centerY + radius * Math.sin(endAngleRad);
+
+      const x3 = centerX + innerRadius * Math.cos(startAngleRad);
+      const y3 = centerY + innerRadius * Math.sin(startAngleRad);
+      const x4 = centerX + innerRadius * Math.cos(endAngleRad);
+      const y4 = centerY + innerRadius * Math.sin(endAngleRad);
+
+      const largeArc = angle > 180 ? 1 : 0;
+
+      const pathData = [
+        `M ${x1} ${y1}`,
+        `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
+        `L ${x4} ${y4}`,
+        `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x3} ${y3}`,
+        'Z'
+      ].join(' ');
+
+      // Calculate center point for tooltip
+      const midAngleRad = ((startAngle + angle / 2) * Math.PI) / 180;
+      const tooltipX = centerX + (radius + 15) * Math.cos(midAngleRad);
+      const tooltipY = centerY + (radius + 15) * Math.sin(midAngleRad);
+
+      return {
+        pathData,
+        item,
+        index,
+        tooltipX,
+        tooltipY,
+        midAngleRad
+      };
+    });
 
     return (
       <div className="h-48 w-full relative">
-        <svg width="100%" height="100%" viewBox="0 0 200 160" className="absolute inset-0">
-          {data.map((item, index) => {
-            const angle = (item.value / 100) * 360;
-            const startAngle = currentAngle;
-            const endAngle = currentAngle + angle;
-            
-            const x1 = centerX + radius * Math.cos((startAngle * Math.PI) / 180);
-            const y1 = centerY + radius * Math.sin((startAngle * Math.PI) / 180);
-            const x2 = centerX + radius * Math.cos((endAngle * Math.PI) / 180);
-            const y2 = centerY + radius * Math.sin((endAngle * Math.PI) / 180);
-            
-            const x3 = centerX + innerRadius * Math.cos((startAngle * Math.PI) / 180);
-            const y3 = centerY + innerRadius * Math.sin((startAngle * Math.PI) / 180);
-            const x4 = centerX + innerRadius * Math.cos((endAngle * Math.PI) / 180);
-            const y4 = centerY + innerRadius * Math.sin((endAngle * Math.PI) / 180);
-            
-            const largeArc = angle > 180 ? 1 : 0;
-            
-            const pathData = [
-              `M ${x1} ${y1}`,
-              `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
-              `L ${x4} ${y4}`,
-              `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x3} ${y3}`,
-              'Z'
-            ].join(' ');
-            
-            currentAngle += angle;
-            
-            return (
-              <path key={index} d={pathData} fill={item.color} />
-            );
-          })}
+        <svg width="100%" height="70%" viewBox="0 0 200 120" className="absolute top-0 left-0">
+          <defs>
+            <filter id="dropShadow">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.2"/>
+            </filter>
+          </defs>
+
+          {segments.map((segment) => (
+            <g key={segment.index}>
+              <path
+                d={segment.pathData}
+                fill={segment.item.color}
+                stroke="#fff"
+                strokeWidth="2"
+                className="cursor-pointer transition-all duration-200"
+                style={{
+                  filter: hoveredSegment === segment.index && activeChart === "doughnut" ? "url(#dropShadow)" : "",
+                  transform: hoveredSegment === segment.index && activeChart === "doughnut" ? "scale(1.05)" : "scale(1)",
+                  transformOrigin: `${centerX}px ${centerY}px`,
+                  opacity: hoveredSegment === null || hoveredSegment === segment.index ? 1 : 0.7
+                }}
+                onMouseEnter={() => handleMouseEnter(segment.index)}
+                onMouseLeave={handleMouseLeave}
+              />
+
+              {/* Tooltip - only show if this chart is active */}
+              {hoveredSegment === segment.index && activeChart === "doughnut" && (
+                <g>
+                  <rect
+                    x={segment.tooltipX - 35}
+                    y={segment.tooltipY - 20}
+                    width="70"
+                    height="30"
+                    fill="#1f2937"
+                    rx="4"
+                    stroke="#374151"
+                    strokeWidth="1"
+                    filter="url(#dropShadow)"
+                  />
+                  <text
+                    x={segment.tooltipX}
+                    y={segment.tooltipY - 5}
+                    textAnchor="middle"
+                    fill="white"
+                    fontSize="11"
+                    fontWeight="500"
+                  >
+                    {segment.item.name}
+                  </text>
+                  <text
+                    x={segment.tooltipX}
+                    y={segment.tooltipY + 8}
+                    textAnchor="middle"
+                    fill="#9ca3af"
+                    fontSize="9"
+                  >
+                    {segment.item.value}%
+                  </text>
+                </g>
+              )}
+            </g>
+          ))}
         </svg>
-        
-        {/* Legend */}
-        <div className="absolute bottom-2 left-0 right-0 flex flex-wrap justify-center gap-2 text-xs">
+
+        {/* Legend with hover effects - positioned below the chart */}
+        <div className="absolute bottom-0 left-0 right-0 flex flex-wrap justify-center gap-3 text-xs">
           {data.map((item, index) => (
-            <div key={index} className="flex items-center gap-1">
-              <div 
-                className="w-2 h-2 rounded-full" 
+            <div
+              key={index}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all duration-200 cursor-pointer ${
+                hoveredSegment === index && activeChart === "doughnut" ? 'bg-muted/80 shadow-sm' : 'hover:bg-muted/40'
+              }`}
+              onMouseEnter={() => handleMouseEnter(index)}
+              onMouseLeave={handleMouseLeave}
+            >
+              <div
+                className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
+                  hoveredSegment === index && activeChart === "doughnut" ? 'scale-125' : ''
+                }`}
                 style={{ backgroundColor: item.color }}
               />
-              <span className="text-muted-foreground">{item.name}</span>
+              <span className={`transition-colors duration-200 ${
+                hoveredSegment === index && activeChart === "doughnut" ? 'text-foreground font-medium' : 'text-muted-foreground'
+              }`}>
+                {item.name}
+              </span>
+              <span className={`text-muted-foreground transition-colors duration-200 ${
+                hoveredSegment === index && activeChart === "doughnut" ? 'text-primary' : ''
+              }`}>
+                {item.value}%
+              </span>
             </div>
           ))}
         </div>
