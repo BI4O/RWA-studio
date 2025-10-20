@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/site-header";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "RWA Studio",
+  title: "ChainLex.ai",
   description: "AI-assisted workbench for onboarding real-world assets to blockchain networks.",
 };
 

@@ -47,7 +47,7 @@ export function SiteHeader() {
         <div className="flex items-center gap-3">
           <BrandMark />
           <Link href="/" className="text-base font-semibold text-foreground md:text-lg">
-            RWA studio
+            ChainLex.ai
           </Link>
         </div>
         <nav className="hidden md:block">

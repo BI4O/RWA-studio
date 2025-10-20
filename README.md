@@ -1,4 +1,4 @@
-# RWA Studio 🏗️
+# ChainLex.ai 🏗️
 
 > AI驱动的RWA代币合规发行工作台 - 让现实世界资产上链变得简单合规
 
@@ -10,7 +10,7 @@
 
 ## 🌟 项目愿景
 
-RWA Studio是一个革命性的AI驱动工作台，专门为现实世界资产（RWA）代币化发行而设计。我们结合了先进的AI技术和成熟的合规框架，让传统资产发行方能够轻松、快速、合规地将资产上链。
+ChainLex.ai是一个革命性的AI驱动工作台，专门为现实世界资产（RWA）代币化发行而设计。我们结合了先进的AI技术和成熟的合规框架，让传统资产发行方能够轻松、快速、合规地将资产上链。
 
 ### 🎯 核心使命
 
@@ -30,8 +30,8 @@ RWA Studio是一个革命性的AI驱动工作台，专门为现实世界资产�
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/your-org/RWA-studio.git
-cd RWA-studio
+git clone https://github.com/your-org/chainlex-ai.git
+cd chainlex-ai
 ```
 
 ### 2. 安装依赖
@@ -267,14 +267,14 @@ npx hardhat run scripts/deploy.js --network mainnet
 
 ## 📞 联系我们
 
-- 🌐 项目主页: [RWA Studio](https://rwa-studio.vercel.app)
-- 📧 邮箱: contact@rwa-studio.io
-- 💬 Discord: [加入社区](https://discord.gg/rwa-studio)
-- 🐦 Twitter: [@RWA_Studio](https://twitter.com/rwa_studio)
+- 🌐 项目主页: [ChainLex.ai](https://chainlex-ai.vercel.app)
+- 📧 邮箱: contact@chainlex.ai
+- 💬 Discord: [加入社区](https://discord.gg/chainlex-ai)
+- 🐦 Twitter: [@ChainLexAI](https://twitter.com/chainlexai)
 
 ---
 
 <div align="center">
   <p>🚀 让现实世界资产轻松上链，开启DeFi新纪元</p>
-  <p>Made with ❤️ by the RWA Studio Team</p>
+  <p>Made with ❤️ by the ChainLex.ai Team</p>
 </div>

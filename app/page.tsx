@@ -28,10 +28,10 @@ export default function HomePage() {
   return (
     <section className="space-y-10">
       <header className="space-y-6">
-        <p className="text-sm uppercase tracking-wider text-primary">RWA Studio</p>
+        <p className="text-sm uppercase tracking-wider text-primary">ChainLex.ai</p>
         <h2 className="text-4xl font-semibold tracking-tight">Ship real-world assets onchain confidently</h2>
         <p className="max-w-3xl text-lg text-muted-foreground">
-          RWA Studio orchestrates compliance automation, contract generation, and post-deployment monitoring
+          ChainLex.ai orchestrates compliance automation, contract generation, and post-deployment monitoring
           through an AI-first workspace. The platform codifies the PRD specification into production-ready
           workflows using Next.js, shadcn/ui, viem, wagmi, and Neon.
         </p>

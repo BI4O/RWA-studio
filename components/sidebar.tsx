@@ -27,7 +27,7 @@ export function Sidebar() {
       <div className="flex h-full flex-col justify-between space-y-6">
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-semibold">RWA Studio</h1>
+            <h1 className="text-2xl font-semibold">ChainLex.ai</h1>
             <p className="text-sm text-muted-foreground">AI-native RWA issuance workbench</p>
           </div>
           <nav className="space-y-2">

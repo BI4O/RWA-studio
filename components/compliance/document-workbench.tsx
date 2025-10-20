@@ -191,7 +191,7 @@ export function DocumentWorkbench() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_name: "RWA Studio User",
+          user_name: "ChainLex.ai User",
           project_name: "RWA Token Listing Memo"
         }),
         signal: controller.signal

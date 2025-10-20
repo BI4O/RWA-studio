@@ -380,7 +380,7 @@ def initialize_agent():
     llm = ChatOpenAI(
         base_url="https://apis.iflow.cn/v1",
         api_key="sk-34d42e4c747d1bdf0f02beaca589cd38",
-        model="kimi-k2",
+        model="kimi-k2-0905",
         temperature=0.1
     )
 

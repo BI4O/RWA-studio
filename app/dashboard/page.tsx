@@ -1,7 +1,7 @@
 import { DashboardOverview } from "@/components/dashboard/overview";
 
 export const metadata = {
-  title: "RWA Studio — Monitoring Dashboard",
+  title: "ChainLex.ai — Monitoring Dashboard",
   description: "Track deployments, telemetry, and compliance throughput in one workspace.",
 };
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-RWA Studio is an AI-driven workbench for onboarding real-world assets (RWA) to blockchain networks. It orchestrates compliance automation, contract generation, and post-deployment monitoring through an AI-first workspace.
+ChainLex.ai is an AI-driven workbench for onboarding real-world assets (RWA) to blockchain networks. It orchestrates compliance automation, contract generation, and post-deployment monitoring through an AI-first workspace.
 
 ## Architecture
 

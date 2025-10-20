@@ -29,8 +29,8 @@ export async function POST(request: Request) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://rwa.studio",
-      "X-Title": "RWA Studio",
+      "HTTP-Referer": "https://chainlex.ai",
+      "X-Title": "ChainLex.ai",
     },
     body: JSON.stringify({
       model: model ?? "qwen/qwen3-coder:free",
